@@ -91,7 +91,6 @@ export class App {
     this.els.qualityGroup.innerHTML = QUALITIES.map((q, i) => `
       <button class="quality-btn${i === 0 ? ' active' : ''}" data-value="${q.value}">
         <span class="q-name">${q.name}</span>
-        <span class="q-label">${q.label}</span>
       </button>
     `).join('');
   }

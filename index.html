@@ -49,7 +49,10 @@
     <section class="controls" id="controlsSection" style="display:none">
       <!-- 尺寸选择 -->
       <div class="card controls-card">
-        <label class="control-label">选择尺寸</label>
+        <label class="control-label">
+          <svg class="label-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          选择尺寸
+        </label>
         <div class="size-scroll" id="sizeScroll">
           <!-- JS 生成 -->
         </div>
@@ -57,17 +60,28 @@
 
       <!-- 输出质量 -->
       <div class="card controls-card">
-        <label class="control-label">输出质量</label>
-        <div class="quality-group" id="qualityGroup">
-          <!-- JS 生成 -->
+        <div class="quality-row">
+          <label class="control-label control-label-v">
+            <svg class="label-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span class="label-v-text">输出<br>质量</span>
+          </label>
+          <div class="quality-group" id="qualityGroup">
+            <!-- JS 生成 -->
+          </div>
         </div>
       </div>
 
       <!-- 标签切换 -->
       <div class="card controls-card">
         <div class="tab-bar">
-          <button class="tab-btn active" data-tab="adjust">调整</button>
-          <button class="tab-btn" data-tab="color">颜色</button>
+          <button class="tab-btn active" data-tab="adjust">
+            <svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+            调整
+          </button>
+          <button class="tab-btn" data-tab="color">
+            <svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            颜色
+          </button>
         </div>
 
         <!-- 调整面板 -->

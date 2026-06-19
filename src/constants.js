@@ -9,9 +9,8 @@ export const SIZES = [
 
 /** 输出质量倍率 */
 export const QUALITIES = [
-  { name: '1x', value: 1, label: '标准' },
-  { name: '2x', value: 2, label: '高清' },
-  { name: '4x', value: 4, label: '超清' },
+  { name: '原图', value: 1 },
+  { name: '高清', value: 2 },
 ];
 
 /** 预设填充颜色 */
