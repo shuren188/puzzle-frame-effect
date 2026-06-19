@@ -1,0 +1,15 @@
+{
+  "name": "puzzle-photo-tool",
+  "private": true,
+  "version": "1.0.0",
+  "description": "拼图图片自适应工具 - 上传照片，适配拼图尺寸，保持照片完整性，添加白边填充",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^6.3.0"
+  }
+}
