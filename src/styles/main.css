@@ -1,29 +1,28 @@
 /* ========================================
-   拼图图片自适应工具 - 深色科技主题
+   拼图图片自适应工具 - 参考图风格重设计
+   毛玻璃 + 深色渐变 + 青紫粉配色
    ======================================== */
 
 /* ---------- CSS 变量 ---------- */
 :root {
-  --bg: #0a0a0f;
-  /* oklch 颜色带 hex fallback（兼容旧版 WebView） */
-  --card-bg: #1e1e2e;
-  --card-bg: oklch(0.18 0.03 260);
-  --card-border: rgba(45, 45, 61, 0.5);
-  --card-border: oklch(0.25 0.03 260 / 0.5);
-  --text-primary: #f2f2f2;
-  --text-primary: oklch(0.95 0.01 260);
-  --text-muted: #9e9e9e;
-  --text-muted: oklch(0.65 0.02 260);
-  --cyan: #06b6d4;
-  --cyan: oklch(0.65 0.15 195);
-  --purple: #a855f7;
-  --purple: oklch(0.55 0.12 285);
-  --pink: #ec4899;
-  --pink: oklch(0.6 0.14 340);
-  --radius-lg: 12px;
-  --radius-md: 8px;
-  --radius-sm: 6px;
-  --transition: 0.2s ease;
+  /* 参考图配色 */
+  --bg-top: #141c2e;
+  --bg-mid: #0b111e;
+  --bg-bot: #06040a;
+  --card-bg: rgba(29, 39, 58, 0.65);
+  --card-border: rgba(255, 255, 255, 0.06);
+  --card-glow: rgba(88, 253, 253, 0.04);
+  --text-primary: #e8edf7;
+  --text-muted: #8a93ae;
+  --cyan: #58fdfd;
+  --cyan-dim: rgba(88, 253, 253, 0.15);
+  --purple: #b37aeb;
+  --purple-deep: #8138c3;
+  --pink: #fba7ae;
+  --radius-lg: 14px;
+  --radius-md: 10px;
+  --radius-sm: 8px;
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ---------- Reset & Base ---------- */
@@ -40,45 +39,82 @@ html {
 }
 
 body {
-  background: var(--bg);
-  color: var(--text-primary);
   min-height: 100vh;
   min-height: 100dvh;
   padding: 12px 12px 24px;
   line-height: 1.5;
   font-size: 14px;
   overflow-x: hidden;
+  color: var(--text-primary);
+  background: linear-gradient(175deg, var(--bg-top) 0%, var(--bg-mid) 40%, var(--bg-bot) 100%);
+  background-attachment: fixed;
+}
+
+/* 背景装饰光晕 */
+body::before {
+  content: '';
+  position: fixed;
+  top: -30%;
+  left: -20%;
+  width: 60%;
+  height: 60%;
+  background: radial-gradient(ellipse, rgba(88, 253, 253, 0.04) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  bottom: -20%;
+  right: -20%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(ellipse, rgba(129, 56, 195, 0.05) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
 }
 
 /* ---------- Header ---------- */
 .header {
   text-align: center;
-  padding: 16px 0 12px;
+  padding: 18px 0 14px;
 }
 
 .gradient-text {
   font-size: 1.5rem;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--cyan), var(--purple), var(--pink));
+  background: linear-gradient(135deg, var(--cyan) 0%, var(--purple) 50%, var(--pink) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   letter-spacing: -0.02em;
+  text-shadow: 0 0 40px rgba(88, 253, 253, 0.1);
 }
 
 .header-sub {
   font-size: 0.75rem;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 4px;
+  letter-spacing: 0.02em;
 }
 
-/* ---------- Card ---------- */
+/* ---------- 毛玻璃卡片 ---------- */
 .card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
   padding: 16px;
   margin-bottom: 12px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: box-shadow var(--transition);
 }
 
 /* ---------- Upload Area ---------- */
@@ -94,28 +130,31 @@ body {
   justify-content: center;
   min-height: 200px;
   cursor: pointer;
-  border: 2px dashed var(--card-border);
+  border: 1.5px dashed rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-md);
-  transition: border-color var(--transition), background var(--transition);
+  transition: all var(--transition);
   padding: 24px;
-  gap: 8px;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .upload-placeholder:hover,
 .upload-placeholder.drag-over {
   border-color: var(--cyan);
-  background: rgba(6, 182, 212, 0.05);
-  background: oklch(0.65 0.15 195 / 0.05);
+  background: var(--cyan-dim);
+  box-shadow: 0 0 24px rgba(88, 253, 253, 0.06);
 }
 
 .upload-icon {
   color: var(--text-muted);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  opacity: 0.6;
 }
 
 .upload-text {
   font-size: 0.9rem;
   color: var(--text-primary);
+  font-weight: 500;
 }
 
 .upload-hint {
@@ -148,11 +187,12 @@ body {
   height: 260px;
   border-radius: var(--radius-md);
   overflow: hidden;
-  background: #000;
+  background: rgba(0, 0, 0, 0.4);
   touch-action: none;
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .preview-canvas-wrapper:active {
@@ -172,7 +212,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,0.3);
+  color: rgba(255, 255, 255, 0.2);
   font-size: 0.85rem;
   pointer-events: none;
   opacity: 0;
@@ -190,19 +230,23 @@ body {
   gap: 0;
 }
 
+/* ---------- 控制标签 ---------- */
 .control-label {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   font-size: 0.75rem;
   color: var(--cyan);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   font-weight: 600;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0 12px rgba(88, 253, 253, 0.15);
 }
 
 .label-icon {
   flex-shrink: 0;
   opacity: 0.9;
+  filter: drop-shadow(0 0 4px rgba(88, 253, 253, 0.2));
 }
 
 /* 竖排标题（输出质量） */
@@ -215,12 +259,12 @@ body {
 }
 
 .label-v-text {
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   line-height: 1.2;
   letter-spacing: 0.02em;
 }
 
-/* ---------- Size Scroll ---------- */
+/* ---------- Size Buttons ---------- */
 .size-scroll {
   display: flex;
   gap: 6px;
@@ -229,9 +273,9 @@ body {
 .size-btn {
   flex: 1;
   padding: 6px 4px;
-  border: 1px solid var(--card-border);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.02);
   color: var(--text-primary);
   font-size: 0.7rem;
   cursor: pointer;
@@ -255,18 +299,17 @@ body {
 }
 
 .size-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  background: oklch(1 0 0 / 0.05);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .size-btn.active {
   border-color: var(--cyan);
-  box-shadow: 0 0 0 2px var(--cyan);
-  background: rgba(6, 182, 212, 0.1);
-  background: oklch(0.65 0.15 195 / 0.1);
+  background: var(--cyan-dim);
+  box-shadow: 0 0 16px rgba(88, 253, 253, 0.08), inset 0 0 8px rgba(88, 253, 253, 0.04);
 }
 
-/* ---------- Quality Row ---------- */
+/* ---------- Quality ---------- */
 .quality-row {
   display: flex;
   align-items: center;
@@ -282,9 +325,9 @@ body {
 .quality-btn {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid var(--card-border);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.02);
   color: var(--text-primary);
   font-size: 0.78rem;
   cursor: pointer;
@@ -297,15 +340,14 @@ body {
 }
 
 .quality-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  background: oklch(1 0 0 / 0.05);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .quality-btn.active {
   border-color: var(--cyan);
-  box-shadow: 0 0 0 2px var(--cyan);
-  background: rgba(6, 182, 212, 0.1);
-  background: oklch(0.65 0.15 195 / 0.1);
+  background: var(--cyan-dim);
+  box-shadow: 0 0 16px rgba(88, 253, 253, 0.08), inset 0 0 8px rgba(88, 253, 253, 0.04);
 }
 
 /* ---------- Tab Bar ---------- */
@@ -313,10 +355,10 @@ body {
   display: flex;
   gap: 4px;
   margin-bottom: 12px;
-  background: #14141f;
-  background: oklch(0.12 0.02 260);
+  background: rgba(0, 0, 0, 0.2);
   border-radius: var(--radius-md);
   padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .tab-btn {
@@ -325,7 +367,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 6px 12px;
+  padding: 7px 12px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -343,6 +385,8 @@ body {
 .tab-btn.active {
   background: var(--card-bg);
   color: var(--text-primary);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .tab-btn.active .tab-icon {
@@ -419,8 +463,7 @@ body {
   width: 100%;
   height: 4px;
   border-radius: 2px;
-  background: rgba(45, 45, 61, 0.5);
-  background: oklch(0.25 0.03 260 / 0.5);
+  background: rgba(255, 255, 255, 0.08);
   outline: none;
   transition: background var(--transition);
 }
@@ -431,19 +474,19 @@ body {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--cyan);
+  background: linear-gradient(135deg, var(--cyan), var(--purple));
   cursor: pointer;
-  border: 2px solid var(--bg);
-  box-shadow: 0 0 4px rgba(0,0,0,0.3);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 12px rgba(88, 253, 253, 0.2), 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .slider::-moz-range-thumb {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--cyan);
+  background: linear-gradient(135deg, var(--cyan), var(--purple));
   cursor: pointer;
-  border: 2px solid var(--bg);
+  border: 2px solid rgba(255, 255, 255, 0.1);
 }
 
 /* ---------- Rotate ---------- */
@@ -481,17 +524,17 @@ body {
 
 .color-btn.active {
   border-color: var(--text-primary);
-  box-shadow: 0 0 0 2px var(--cyan);
+  box-shadow: 0 0 12px rgba(88, 253, 253, 0.2), 0 0 0 2px var(--cyan);
 }
 
 .color-btn.custom-btn {
-  border: 2px dashed var(--card-border);
+  border: 2px dashed rgba(255, 255, 255, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.2rem;
   color: var(--text-muted);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .color-btn.custom-btn:hover {
@@ -499,7 +542,7 @@ body {
   color: var(--cyan);
 }
 
-/* ---------- Buttons ---------- */
+/* ---------- General Buttons ---------- */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -516,15 +559,15 @@ body {
 }
 
 .btn-ghost {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-muted);
   padding: 4px 10px;
   font-size: 0.75rem;
+  border-radius: var(--radius-sm);
 }
 
 .btn-ghost:hover {
   background: rgba(255, 255, 255, 0.08);
-  background: oklch(1 0 0 / 0.08);
   color: var(--text-primary);
 }
 
@@ -534,15 +577,15 @@ body {
 }
 
 .btn-outline {
-  background: transparent;
-  border: 1px solid var(--card-border);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
 }
 
 .btn-outline:hover {
   border-color: var(--cyan);
-  background: rgba(6, 182, 212, 0.08);
-  background: oklch(0.65 0.15 195 / 0.08);
+  background: var(--cyan-dim);
+  box-shadow: 0 0 12px rgba(88, 253, 253, 0.06);
 }
 
 .btn-icon {
@@ -550,23 +593,33 @@ body {
   font-size: 0.75rem;
 }
 
+/* ---------- Download Button ---------- */
 .btn-download {
   width: 100%;
-  padding: 14px 20px;
-  background: linear-gradient(135deg, var(--cyan), var(--purple));
+  padding: 15px 20px;
+  background: linear-gradient(135deg, var(--cyan) 0%, var(--purple) 100%);
   color: #fff;
   font-size: 1rem;
   font-weight: 700;
   border-radius: var(--radius-lg);
   margin-top: 4px;
-  box-shadow: 0 4px 20px rgba(168, 85, 247, 0.3);
-  box-shadow: 0 4px 20px oklch(0.55 0.12 285 / 0.3);
+  box-shadow: 0 4px 24px rgba(88, 253, 253, 0.15), 0 2px 8px rgba(129, 56, 195, 0.2);
+  letter-spacing: 0.01em;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-download::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, transparent 50%);
+  pointer-events: none;
 }
 
 .btn-download:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 24px rgba(168, 85, 247, 0.4);
-  box-shadow: 0 6px 24px oklch(0.55 0.12 285 / 0.4);
+  box-shadow: 0 8px 32px rgba(88, 253, 253, 0.2), 0 4px 12px rgba(129, 56, 195, 0.3);
 }
 
 .btn-download:active {
@@ -579,13 +632,15 @@ body {
   bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--card-bg);
+  background: rgba(29, 39, 58, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--text-primary);
   padding: 10px 20px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--card-border);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 0.8rem;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   opacity: 0;
   transition: opacity 0.3s ease;
   z-index: 1000;
@@ -604,18 +659,21 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.4);
   border-radius: var(--radius-md);
   z-index: 10;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid var(--card-border);
+  border: 2px solid rgba(255, 255, 255, 0.08);
   border-top-color: var(--cyan);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
+  box-shadow: 0 0 12px rgba(88, 253, 253, 0.08);
 }
 
 @keyframes spin {
@@ -635,24 +693,27 @@ body {
   justify-content: center;
   z-index: 99999;
   padding: 16px;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .color-picker-modal {
-  background: #1c1c26;
-  border-radius: 14px;
+  background: rgba(22, 28, 44, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 16px;
   width: 100%;
   max-width: 320px;
   overflow: hidden;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 }
 
 .color-picker-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px 8px;
+  padding: 16px 16px 8px;
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -674,12 +735,11 @@ body {
   gap: 12px;
 }
 
-/* SV 面板 */
 .cp-sv-wrap {
   position: relative;
   width: 100%;
   aspect-ratio: 260 / 180;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
   cursor: crosshair;
   touch-action: none;
@@ -699,10 +759,9 @@ body {
   border-radius: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  box-shadow: 0 0 3px rgba(0,0,0,0.5);
+  box-shadow: 0 0 6px rgba(0,0,0,0.5);
 }
 
-/* 色相条 */
 .cp-hue-wrap {
   position: relative;
   width: 100%;
@@ -728,10 +787,9 @@ body {
   border-radius: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  box-shadow: 0 0 3px rgba(0,0,0,0.5);
+  box-shadow: 0 0 6px rgba(0,0,0,0.5);
 }
 
-/* 底部：预览 + HEX + 按钮 */
 .cp-bottom {
   display: flex;
   align-items: center;
@@ -741,8 +799,8 @@ body {
 .cp-preview {
   width: 36px;
   height: 36px;
-  border-radius: 6px;
-  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
 }
 
@@ -761,8 +819,8 @@ body {
 
 .cp-hex-input {
   flex: 1;
-  background: #0a0a0f;
-  border: 1px solid var(--card-border);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
   color: var(--text-primary);
   font-size: 0.85rem;
@@ -781,11 +839,12 @@ body {
   background: linear-gradient(135deg, var(--cyan), var(--purple));
   color: #fff;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(88, 253, 253, 0.1);
 }
 
 .cp-done-btn:active {
