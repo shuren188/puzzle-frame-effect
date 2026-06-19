@@ -44,7 +44,7 @@ export const DRAG_SENSITIVITY = 2.5;
 
 /** 文案 */
 export const TEXT = {
-  title: '上传即拼图',
+  title: '拼图裁剪效果图',
   subtitle: '完整保留画面 · 智能白边适配 · 35至520片',
   previewTitle: '拼图预览',
   reUpload: '重新上传',
