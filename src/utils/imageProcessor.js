@@ -32,19 +32,24 @@ export function renderImage(ctx, img, targetW, targetH, opts, quality = 1) {
   ctx.fillRect(0, 0, w, h);
 
   // 计算图片在目标区域内的适配尺寸（pad模式：保持完整，添加白边）
-  // 原理：图片完整显示在画布内，剩余空间用背景色填充
   const imgAspect = img.naturalWidth / img.naturalHeight;
-  const targetAspect = targetW / targetH;
-
   let imgW, imgH;
-  if (imgAspect > targetAspect) {
-    // 图片更宽：以宽度为基准，高度等比缩放（上下加白边）
-    imgW = w;
-    imgH = w / imgAspect;
+
+  if (opts.rotation % 180 !== 0) {
+    // 90°/270° 旋转：绘制后宽高会互换，需要反向约束
+    // 旋转后：有效宽度 = 绘制高度, 有效高度 = 绘制宽度
+    // 需要: 绘制高度 ≤ 画布宽度, 绘制宽度 ≤ 画布高度
+    imgH = Math.min(w, h / imgAspect);
+    imgW = imgH * imgAspect;
   } else {
-    // 图片更高：以高度为基准，宽度等比缩放（左右加白边）
-    imgH = h;
-    imgW = h * imgAspect;
+    const targetAspect = targetW / targetH;
+    if (imgAspect > targetAspect) {
+      imgW = w;
+      imgH = w / imgAspect;
+    } else {
+      imgH = h;
+      imgW = h * imgAspect;
+    }
   }
 
   // 应用缩放

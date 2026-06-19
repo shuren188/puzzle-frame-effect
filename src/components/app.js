@@ -194,10 +194,12 @@ export class App {
     // 旋转
     this.els.rotateLeftBtn.addEventListener('click', () => {
       this.state.rotation = (this.state.rotation - 90 + 360) % 360;
+      this.animateRotateBtn(this.els.rotateLeftBtn);
       this.scheduleRender();
     });
     this.els.rotateRightBtn.addEventListener('click', () => {
       this.state.rotation = (this.state.rotation + 90) % 360;
+      this.animateRotateBtn(this.els.rotateRightBtn);
       this.scheduleRender();
     });
 
@@ -356,6 +358,16 @@ export class App {
       this.els.previewContainer.style.display = 'flex';
       this.els.controlsSection.style.display = 'flex';
 
+      // 卡片入场动画（交错延迟）
+      const cards = this.els.controlsSection.querySelectorAll('.card');
+      cards.forEach((card, i) => {
+        card.classList.remove('anim-fade-in-up');
+        // 触发回流后添加动画类
+        void card.offsetWidth;
+        card.classList.add('anim-fade-in-up');
+        card.style.setProperty('--anim-delay', `${(i + 1) * 0.12}s`);
+      });
+
       this.hideLoading();
       this.renderPreview();
     } catch (err) {
@@ -372,12 +384,16 @@ export class App {
     this.els.previewContainer.style.display = 'none';
     this.els.controlsSection.style.display = 'none';
     this.els.fileInput.value = '';
+    // 清除卡片动画类
+    this.els.controlsSection.querySelectorAll('.card').forEach(c => c.classList.remove('anim-fade-in-up'));
   }
 
   // ===================== 渲染预览 =====================
 
   scheduleRender() {
     if (this.renderTimer) cancelAnimationFrame(this.renderTimer);
+    // canvas 更新闪烁提示
+    this.els.canvasWrapper.classList.add('updating');
     this.renderTimer = requestAnimationFrame(() => this.renderPreview());
   }
 
@@ -412,6 +428,9 @@ export class App {
       rotation: this.state.rotation,
       fillColor: this.state.fillColor,
     }, 1);
+
+    // 移除更新闪烁
+    this.els.canvasWrapper.classList.remove('updating');
   }
 
   // ===================== 下载 =====================
@@ -468,6 +487,12 @@ export class App {
   }
 
   // ===================== 工具方法 =====================
+
+  animateRotateBtn(btn) {
+    btn.classList.remove('btn-rotate-spin');
+    void btn.offsetWidth;
+    btn.classList.add('btn-rotate-spin');
+  }
 
   updateAdjustSummary() {
     this.els.adjustSummaryText.textContent = `缩放 ${this.state.zoom}% · 位置微调`;

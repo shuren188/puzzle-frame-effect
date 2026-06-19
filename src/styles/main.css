@@ -192,6 +192,66 @@ body::after {
   font-weight: 400;
 }
 
+/* ========================================
+   动效关键帧
+   ======================================== */
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes spinOnce {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* 动画工具类 */
+.anim-fade-in-up {
+  animation: fadeInUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--anim-delay, 0s);
+}
+
+.anim-fade-in {
+  animation: fadeIn 0.3s ease both;
+}
+
+.anim-scale-in {
+  animation: scaleIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 旋转按钮点击反馈 */
+.btn-rotate-spin {
+  animation: spinOnce 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 预览 canvas 过渡效果 */
+.preview-canvas-wrapper canvas {
+  transition: opacity 0.25s ease;
+}
+.preview-canvas-wrapper canvas.updating {
+  opacity: 0.5;
+}
+
+/* Tab 面板切换动画 */
+.tab-panel {
+  display: none;
+}
+.tab-panel.active {
+  display: block;
+  animation: fadeIn 0.25s ease both;
+}
+
 /* ---------- 毛玻璃卡片 - 增强版 ---------- */
 .card {
   background: var(--card-bg);
@@ -509,13 +569,7 @@ body::after {
   color: var(--cyan);
 }
 
-.tab-panel {
-  display: none;
-}
-
-.tab-panel.active {
-  display: block;
-}
+/* (tab-panel 动画定义在动效区上方) */
 
 /* ---------- Adjustment Panel ---------- */
 .adjust-details {
