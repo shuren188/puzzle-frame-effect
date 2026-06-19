@@ -235,6 +235,23 @@ body::after {
   animation: spinOnce 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* 上传区域扫描光效 */
+@keyframes scanSweep {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 16px rgba(88, 253, 253, 0.06); }
+  50% { box-shadow: 0 0 28px rgba(88, 253, 253, 0.15); }
+}
+
+@keyframes btnSelectPop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.08); }
+  100% { transform: scale(1.04); }
+}
+
 /* 预览 canvas 过渡效果 */
 .preview-canvas-wrapper canvas {
   transition: opacity 0.25s ease;
@@ -302,6 +319,33 @@ body::after {
   padding: 24px;
   gap: 10px;
   background: rgba(255, 255, 255, 0.02);
+  position: relative;
+  overflow: hidden;
+  animation: pulseGlow 4s ease-in-out infinite;
+}
+
+/* 上传占位区扫描光效 */
+.upload-placeholder::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    rgba(88, 253, 253, 0.05) 42%,
+    rgba(179, 122, 235, 0.05) 48%,
+    rgba(88, 253, 253, 0.05) 54%,
+    transparent 61%
+  );
+  background-size: 200% 100%;
+  animation: scanSweep 5s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.upload-placeholder > * {
+  position: relative;
+  z-index: 1;
 }
 
 .upload-placeholder:hover,
@@ -458,12 +502,30 @@ body::after {
   text-align: center;
   line-height: 1.2;
   min-width: 0;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* 玻璃立体渐变层 */
+.size-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 40%, rgba(0,0,0,0.08) 100%);
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity var(--transition);
 }
 
 .size-btn .size-label {
   display: block;
   font-weight: 600;
   font-size: 0.72rem;
+  position: relative;
+  z-index: 1;
 }
 
 .size-btn .size-dim {
@@ -471,17 +533,30 @@ body::after {
   font-size: 0.55rem;
   color: var(--text-dim);
   margin-top: 1px;
+  position: relative;
+  z-index: 1;
 }
 
 .size-btn:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.size-btn:hover::before {
+  opacity: 1;
+}
+
+.size-btn:active {
+  transform: scale(0.96);
 }
 
 .size-btn.active {
   border-color: var(--cyan);
   background: var(--cyan-dim);
   box-shadow: 0 0 20px rgba(88, 253, 253, 0.08), inset 0 0 12px rgba(88, 253, 253, 0.04);
+  animation: btnSelectPop 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* ---------- Quality ---------- */
@@ -508,21 +583,49 @@ body::after {
   cursor: pointer;
   transition: all var(--transition);
   text-align: center;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.quality-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 40%, rgba(0,0,0,0.08) 100%);
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity var(--transition);
 }
 
 .quality-btn .q-name {
   font-weight: 600;
+  position: relative;
+  z-index: 1;
 }
 
 .quality-btn:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.quality-btn:hover::before {
+  opacity: 1;
+}
+
+.quality-btn:active {
+  transform: scale(0.96);
 }
 
 .quality-btn.active {
   border-color: var(--purple);
   background: var(--purple-dim);
   box-shadow: 0 0 20px rgba(179, 122, 235, 0.08), inset 0 0 12px rgba(179, 122, 235, 0.04);
+  animation: btnSelectPop 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* ---------- Tab Bar ---------- */
@@ -551,10 +654,39 @@ body::after {
   cursor: pointer;
   transition: all var(--transition);
   font-weight: 500;
+  position: relative;
+  overflow: hidden;
+}
+
+.tab-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 50%);
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity var(--transition);
 }
 
 .tab-icon {
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+  transform: scale(1.04);
+}
+
+.tab-btn:hover::before {
+  opacity: 1;
+}
+
+.tab-btn:active {
+  transform: scale(0.96);
 }
 
 .tab-btn.active {
@@ -563,6 +695,7 @@ body::after {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  animation: btnSelectPop 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .tab-btn.active .tab-icon {
@@ -705,6 +838,7 @@ body::after {
 .color-btn.active {
   border-color: var(--text-primary);
   box-shadow: 0 0 16px rgba(88, 253, 253, 0.2), 0 0 0 2px var(--cyan);
+  animation: btnSelectPop 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .color-btn.custom-btn {
@@ -761,12 +895,36 @@ body::after {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--card-border);
   color: var(--text-primary);
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.btn-outline::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 40%, rgba(0,0,0,0.06) 100%);
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity var(--transition);
 }
 
 .btn-outline:hover {
   border-color: var(--cyan);
   background: var(--cyan-dim);
   box-shadow: 0 0 16px rgba(88, 253, 253, 0.06);
+  transform: translateY(-1px);
+}
+
+.btn-outline:hover::before {
+  opacity: 1;
+}
+
+.btn-outline:active {
+  transform: translateY(0) scale(0.97);
 }
 
 .btn-icon {
