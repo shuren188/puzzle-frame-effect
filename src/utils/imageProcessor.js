@@ -4,16 +4,6 @@
  */
 
 /**
- * 厘米转像素
- * @param {number} cm - 厘米
- * @param {number} dpi - 分辨率
- * @returns {number} 像素值
- */
-export function cmToPx(cm, dpi) {
-  return Math.round(cm / 2.54 * dpi);
-}
-
-/**
  * 绘制处理后的图片到 Canvas
  * @param {CanvasRenderingContext2D} ctx - Canvas 上下文
  * @param {HTMLImageElement} img - 源图片
@@ -86,7 +76,7 @@ export function renderImage(ctx, img, canvasW, canvasH, opts) {
 
 /**
  * 为预览创建缩放后的尺寸
- * 预览 canvas 固定高度 260px，按比例缩放目标尺寸
+ * 按比例缩放目标尺寸，默认最大高度200px
  */
 export function getPreviewSize(targetW, targetH, maxHeight = 260) {
   const ratio = targetW / targetH;
@@ -124,13 +114,4 @@ export function loadImage(file) {
     };
     img.src = url;
   });
-}
-
-/**
- * 检查图片是否在可视区域内可拖拽
- */
-export function getDragBounds(imgW, imgH, canvasW, canvasH) {
-  const maxOffX = (imgW - canvasW) / 2;
-  const maxOffY = (imgH - canvasH) / 2;
-  return { maxOffX: Math.max(0, maxOffX), maxOffY: Math.max(0, maxOffY) };
 }

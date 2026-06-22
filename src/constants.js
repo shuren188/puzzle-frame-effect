@@ -7,10 +7,10 @@ export const SIZES = [
   { name: '300/520片', widthCm: 26, heightCm: 38, label: '26×38cm' },
 ];
 
-/** 输出质量 (DPI) */
+/** 输出质量模式 (scale: 0=原分辨率, 2=2倍) */
 export const QUALITIES = [
-  { name: '原图', dpi: 72 },
-  { name: '高清', dpi: 300 },
+  { name: '原图', scale: 0, sub: '保持原画质' },
+  { name: '高清', scale: 2, sub: '2倍分辨率' },
 ];
 
 /** 预设填充颜色 */
@@ -25,7 +25,7 @@ export const PRESET_COLORS = [
 /** 默认设置 */
 export const DEFAULTS = {
   sizeIndex: 0,            // 默认 35片
-  quality: 72,             // 默认 72 DPI（原图）
+  quality: 0,               // 默认 原图画质（scale=0）
   fillColor: '#FFFFFF',    // 默认纯白
   zoom: 100,               // 默认 100%
   offsetX: 0,              // 默认水平居中
@@ -39,20 +39,6 @@ export const ZOOM_RANGE = { min: 50, max: 150, step: 1 };
 /** 偏移范围 (%) */
 export const OFFSET_RANGE = { min: -100, max: 100, step: 1 };
 
-/** 拖拽灵敏度 */
-export const DRAG_SENSITIVITY = 2.5;
+/** 拖拽灵敏度 (降低幅度，减少误触) */
+export const DRAG_SENSITIVITY = 1.0;
 
-/** 文案 */
-export const TEXT = {
-  title: '拼图裁剪效果图',
-  subtitle: '完整保留画面 · 智能白边适配 · 35至520片',
-  previewTitle: '拼图预览',
-  reUpload: '重新上传',
-  sizeLabel: '选择尺寸',
-  qualityLabel: '输出质量',
-  adjustLabel: '调整',
-  colorLabel: '颜色',
-  rotateLeft: '↺ 左转90°',
-  rotateRight: '↻ 右转90°',
-  download: '下载高清图片',
-};

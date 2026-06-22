@@ -1,22 +1,16 @@
-import { SIZES, QUALITIES, PRESET_COLORS, DEFAULTS, TEXT, DRAG_SENSITIVITY } from '../constants.js';
-import { renderImage, loadImage, getPreviewSize, cmToPx } from '../utils/imageProcessor.js';
-import { downloadImage, getOutputFilename, isWeChat } from '../utils/download.js';
+import { SIZES, QUALITIES, PRESET_COLORS, DEFAULTS, DRAG_SENSITIVITY } from '../constants.js';
+import { renderImage, loadImage, getPreviewSize } from '../utils/imageProcessor.js';
+import { downloadImage, getOutputFilename } from '../utils/download.js';
 import { ColorPicker } from './ColorPicker.js';
 
-/**
- * 主应用控制器
- * 管理所有 UI 交互和图片处理流程
- */
+const PINCH_SENSITIVITY = 0.45;
+
 export class App {
   constructor() {
-    // DOM 引用
     this.els = {};
     this.cacheDOM();
-
-    // 状态
     this.state = {
-      image: null,            // 当前加载的图片 (HTMLImageElement)
-      originalFile: null,     // 原始文件
+      image: null, originalFile: null,
       selectedSize: SIZES[DEFAULTS.sizeIndex],
       quality: DEFAULTS.quality,
       fillColor: DEFAULTS.fillColor,
@@ -24,13 +18,10 @@ export class App {
       offsetX: DEFAULTS.offsetX,
       offsetY: DEFAULTS.offsetY,
       rotation: DEFAULTS.rotation,
-      isDragging: false,
-      dragStartX: 0,
-      dragStartY: 0,
-      dragStartOffsetX: 0,
-      dragStartOffsetY: 0,
+      isDragging: false, dragStartX: 0, dragStartY: 0, dragStartOffsetX: 0, dragStartOffsetY: 0,
+      isPinching: false, pinchStartDist: 0, pinchStartZoom: 100,
+      touchStartTime: 0, touchMoved: false,
     };
-
     this.renderTimer = null;
     this.init();
   }
@@ -45,18 +36,15 @@ export class App {
     this.els.dragHint = document.getElementById('dragHint');
     this.els.fileInput = document.getElementById('fileInput');
     this.els.reUploadBtn = document.getElementById('reUploadBtn');
+    this.els.resetBtn = document.getElementById('resetBtn');
     this.els.controlsSection = document.getElementById('controlsSection');
     this.els.sizeScroll = document.getElementById('sizeScroll');
     this.els.qualityGroup = document.getElementById('qualityGroup');
     this.els.colorGrid = document.getElementById('colorGrid');
     this.els.downloadBtn = document.getElementById('downloadBtn');
-
-    // Tab 切换
     this.els.tabBtns = document.querySelectorAll('.tab-btn');
     this.els.panelAdjust = document.getElementById('panelAdjust');
     this.els.panelColor = document.getElementById('panelColor');
-
-    // 调整面板
     this.els.adjustDetails = document.getElementById('adjustDetails');
     this.els.adjustSummaryText = document.getElementById('adjustSummaryText');
     this.els.zoomSlider = document.getElementById('zoomSlider');
@@ -67,6 +55,7 @@ export class App {
     this.els.offsetYValue = document.getElementById('offsetYValue');
     this.els.rotateLeftBtn = document.getElementById('rotateLeftBtn');
     this.els.rotateRightBtn = document.getElementById('rotateRightBtn');
+    this.els.pinchHint = document.getElementById('pinchHint');
   }
 
   init() {
@@ -76,98 +65,65 @@ export class App {
     this.bindEvents();
   }
 
-  // ===================== 渲染 UI =====================
-
   renderSizeButtons() {
-    this.els.sizeScroll.innerHTML = SIZES.map((size, i) => `
-      <button class="size-btn${i === DEFAULTS.sizeIndex ? ' active' : ''}" data-index="${i}">
-        <span class="size-label">${size.name}</span>
-        <span class="size-dim">${size.label}</span>
-      </button>
-    `).join('');
+    this.els.sizeScroll.innerHTML = SIZES.map((s, i) =>
+      `<button class="size-btn${i===DEFAULTS.sizeIndex?' active':''}" data-index="${i}"><span class="size-label">${s.name}</span><span class="size-dim">${s.label}</span></button>`
+    ).join('');
   }
 
   renderQualityButtons() {
-    this.els.qualityGroup.innerHTML = QUALITIES.map((q, i) => `
-      <button class="quality-btn${i === 0 ? ' active' : ''}" data-dpi="${q.dpi}">
-        <span class="q-name">${q.name}</span>
-        <span class="q-dpi">${q.dpi} DPI</span>
-      </button>
-    `).join('');
+    this.els.qualityGroup.innerHTML = QUALITIES.map((q, i) =>
+      `<button class="quality-btn${i===0?' active':''}" data-scale="${q.scale}"><span class="q-name">${q.name}</span><span class="q-dpi">${q.sub}</span></button>`
+    ).join('');
   }
 
   renderColorButtons() {
-    const btns = PRESET_COLORS.map((c, i) => `
-      <button class="color-btn${c.hex === DEFAULTS.fillColor ? ' active' : ''}"
-              data-color="${c.hex}"
-              style="background:${c.hex}"
-              title="${c.name}"></button>
-    `).join('');
-    this.els.colorGrid.innerHTML = btns + `
-      <button class="color-btn custom-btn" id="customColorBtn" title="自定义颜色">+</button>
-    `;
+    const btns = PRESET_COLORS.map((c, i) =>
+      `<button class="color-btn${c.hex===DEFAULTS.fillColor?' active':''}" data-color="${c.hex}" style="background:${c.hex}" title="${c.name}"></button>`
+    ).join('');
+    this.els.colorGrid.innerHTML = btns + '<button class="color-btn custom-btn" id="customColorBtn" title="自定义颜色">+</button>';
   }
 
-  // ===================== 事件绑定 =====================
-
   bindEvents() {
-    // 上传 - 点击
     this.els.uploadPlaceholder.addEventListener('click', () => this.els.fileInput.click());
     this.els.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
-
-    // 上传 - 拖拽
-    this.els.uploadArea.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      this.els.uploadPlaceholder.classList.add('drag-over');
-    });
-    this.els.uploadArea.addEventListener('dragleave', () => {
-      this.els.uploadPlaceholder.classList.remove('drag-over');
-    });
+    this.els.uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); this.els.uploadPlaceholder.classList.add('drag-over'); });
+    this.els.uploadArea.addEventListener('dragleave', () => this.els.uploadPlaceholder.classList.remove('drag-over'));
     this.els.uploadArea.addEventListener('drop', (e) => {
-      e.preventDefault();
-      this.els.uploadPlaceholder.classList.remove('drag-over');
+      e.preventDefault(); this.els.uploadPlaceholder.classList.remove('drag-over');
       const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith('image/')) {
-        this.processFile(file);
-      }
+      if (file && file.type.startsWith('image/')) this.processFile(file);
     });
-
-    // 重新上传
     this.els.reUploadBtn.addEventListener('click', () => this.resetToUpload());
+    this.els.resetBtn.addEventListener('click', () => this.resetImage());
 
-    // 尺寸选择（事件委托）
     this.els.sizeScroll.addEventListener('click', (e) => {
       const btn = e.target.closest('.size-btn');
       if (!btn) return;
       this.els.sizeScroll.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      const idx = parseInt(btn.dataset.index);
-      this.state.selectedSize = SIZES[idx];
+      this.state.selectedSize = SIZES[parseInt(btn.dataset.index)];
       this.scheduleRender();
     });
 
-    // 质量选择（事件委托）
     this.els.qualityGroup.addEventListener('click', (e) => {
       const btn = e.target.closest('.quality-btn');
       if (!btn) return;
       this.els.qualityGroup.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      this.state.quality = parseInt(btn.dataset.dpi);
+      this.state.quality = parseInt(btn.dataset.scale);
       this.scheduleRender();
     });
 
-    // Tab 切换
     this.els.tabBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         this.els.tabBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        const tab = btn.dataset.tab;
-        this.els.panelAdjust.classList.toggle('active', tab === 'adjust');
-        this.els.panelColor.classList.toggle('active', tab === 'color');
+        this.els.panelAdjust.classList.toggle('active', btn.dataset.tab === 'adjust');
+        this.els.panelColor.classList.toggle('active', btn.dataset.tab === 'color');
       });
     });
 
-    // 缩放
     this.els.zoomSlider.addEventListener('input', () => {
       const val = parseInt(this.els.zoomSlider.value);
       this.state.zoom = val;
@@ -175,16 +131,12 @@ export class App {
       this.updateAdjustSummary();
       this.scheduleRender();
     });
-
-    // 水平偏移
     this.els.offsetXSlider.addEventListener('input', () => {
       const val = parseInt(this.els.offsetXSlider.value);
       this.state.offsetX = val;
       this.els.offsetXValue.textContent = val + '%';
       this.scheduleRender();
     });
-
-    // 垂直偏移
     this.els.offsetYSlider.addEventListener('input', () => {
       const val = parseInt(this.els.offsetYSlider.value);
       this.state.offsetY = val;
@@ -192,54 +144,45 @@ export class App {
       this.scheduleRender();
     });
 
-    // 旋转
-    this.els.rotateLeftBtn.addEventListener('click', () => {
+    const rotateLeft = () => {
       this.state.rotation = (this.state.rotation - 90 + 360) % 360;
-      this.animateRotateBtn(this.els.rotateLeftBtn);
+      this.els.rotateLeftBtn.classList.add('btn-clicked');
+      setTimeout(() => this.els.rotateLeftBtn.classList.remove('btn-clicked'), 200);
       this.scheduleRender();
-    });
-    this.els.rotateRightBtn.addEventListener('click', () => {
+    };
+    const rotateRight = () => {
       this.state.rotation = (this.state.rotation + 90) % 360;
-      this.animateRotateBtn(this.els.rotateRightBtn);
+      this.els.rotateRightBtn.classList.add('btn-clicked');
+      setTimeout(() => this.els.rotateRightBtn.classList.remove('btn-clicked'), 200);
       this.scheduleRender();
-    });
+    };
+    this.els.rotateLeftBtn.addEventListener('click', rotateLeft);
+    this.els.rotateRightBtn.addEventListener('click', rotateRight);
 
-    // 颜色选择（事件委托）
     this.els.colorGrid.addEventListener('click', (e) => {
       const btn = e.target.closest('.color-btn');
       if (!btn) return;
-
-      if (btn.id === 'customColorBtn') {
-        this.openColorPicker();
-        return;
-      }
-
+      if (btn.id === 'customColorBtn') { this.openColorPicker(); return; }
       this.setActiveColor(btn.dataset.color);
     });
 
-    // 下载按钮
     this.els.downloadBtn.addEventListener('click', () => this.handleDownload());
 
-    // 拖拽调整位置（canvas 内）
     this.els.canvasWrapper.addEventListener('mousedown', (e) => this.startDrag(e));
-    this.els.canvasWrapper.addEventListener('touchstart', (e) => this.startDrag(e), { passive: false });
+    this.els.canvasWrapper.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
     document.addEventListener('mousemove', (e) => this.onDrag(e));
-    document.addEventListener('touchmove', (e) => this.onDrag(e), { passive: false });
+    document.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
     document.addEventListener('mouseup', () => this.endDrag());
-    document.addEventListener('touchend', () => this.endDrag());
+    document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+    this.els.canvasWrapper.addEventListener('click', (e) => {
+      if (this.state.image && !this.state.isDragging) this.openFullscreenPreview(e);
+    });
   }
-
-  // ===================== 颜色处理 =====================
 
   openColorPicker() {
     new ColorPicker({
       initialColor: this.state.fillColor,
-      onConfirm: (color) => {
-        this.setActiveColor(color);
-      },
-      onCancel: () => {
-        // 不做任何操作
-      },
+      onConfirm: (color) => this.setActiveColor(color),
     });
   }
 
@@ -251,14 +194,13 @@ export class App {
     this.scheduleRender();
   }
 
-  // ===================== 拖拽逻辑 =====================
-
   startDrag(e) {
     if (!this.state.image) return;
+    const pt = e.touches ? e.touches[0] : e;
+    if (!this.isTouchOnImage(pt)) return;
     this.state.isDragging = true;
     this.els.canvasWrapper.classList.add('dragging');
-
-    const pos = e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+    const pos = { x: pt.clientX, y: pt.clientY };
     this.state.dragStartX = pos.x;
     this.state.dragStartY = pos.y;
     this.state.dragStartOffsetX = this.state.offsetX;
@@ -267,68 +209,172 @@ export class App {
 
   onDrag(e) {
     if (!this.state.isDragging) return;
-
     const pos = e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
     const dx = (pos.x - this.state.dragStartX) * DRAG_SENSITIVITY;
     const dy = (pos.y - this.state.dragStartY) * DRAG_SENSITIVITY;
-
-    // 将像素移动映射到百分比偏移
-    const previewW = this.els.previewCanvas.width;
-    const previewH = this.els.previewCanvas.height;
+    const pw = this.els.previewCanvas.width, ph = this.els.previewCanvas.height;
     const size = this.state.selectedSize;
-    const needsRotation = this.state.rotation % 180 !== 0;
-    const tw = needsRotation ? size.heightCm : size.widthCm;
-    const th = needsRotation ? size.widthCm : size.heightCm;
-
-    // 计算预览中的图片实际绘制尺寸
-    const imgAspect = this.state.image.naturalWidth / this.state.image.naturalHeight;
-    const targetAspect = tw / th;
-    let imgW, imgH;
-    if (imgAspect > targetAspect) {
-      imgH = previewH;
-      imgW = imgH * imgAspect;
-    } else {
-      imgW = previewW;
-      imgH = imgW / imgAspect;
-    }
-    const zoomFactor = this.state.zoom / 100;
-    imgW *= zoomFactor;
-    imgH *= zoomFactor;
-
-    // 将像素偏移转为百分比
-    const maxPxOffset = (imgW - previewW) / 2;
-    const maxPyOffset = (imgH - previewH) / 2;
-    const pctX = maxPxOffset > 0 ? (dx / maxPxOffset) * 100 : 0;
-    const pctY = maxPyOffset > 0 ? (dy / maxPyOffset) * 100 : 0;
-
-    let newOffsetX = this.state.dragStartOffsetX + pctX;
-    let newOffsetY = this.state.dragStartOffsetY + pctY;
-    newOffsetX = Math.max(-100, Math.min(100, newOffsetX));
-    newOffsetY = Math.max(-100, Math.min(100, newOffsetY));
-
-    this.state.offsetX = Math.round(newOffsetX);
-    this.state.offsetY = Math.round(newOffsetY);
+    const nr = this.state.rotation % 180 !== 0;
+    const tw = nr ? size.heightCm : size.widthCm, th = nr ? size.widthCm : size.heightCm;
+    const ia = this.state.image.naturalWidth / this.state.image.naturalHeight, ta = tw / th;
+    let iw, ih;
+    if (ia > ta) { ih = ph; iw = ih * ia; } else { iw = pw; ih = iw / ia; }
+    const zf = this.state.zoom / 100;
+    iw *= zf; ih *= zf;
+    const mw = (iw - pw) / 2, mh = (ih - ph) / 2;
+    const px = mw > 0 ? (dx / mw) * 100 : 0, py = mh > 0 ? (dy / mh) * 100 : 0;
+    this.state.offsetX = Math.round(Math.max(-100, Math.min(100, this.state.dragStartOffsetX + px)));
+    this.state.offsetY = Math.round(Math.max(-100, Math.min(100, this.state.dragStartOffsetY + py)));
     this.els.offsetXSlider.value = this.state.offsetX;
     this.els.offsetYSlider.value = this.state.offsetY;
     this.els.offsetXValue.textContent = this.state.offsetX + '%';
     this.els.offsetYValue.textContent = this.state.offsetY + '%';
-
     this.scheduleRender();
   }
 
   endDrag() {
-    if (this.state.isDragging) {
+    if (this.state.isDragging) { this.state.isDragging = false; this.els.canvasWrapper.classList.remove('dragging'); }
+  }
+
+  getTouchDistance(e) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  isTouchOnImage(pos) {
+    if (!this.state.image) return false;
+    const c = this.els.previewCanvas, r = c.getBoundingClientRect();
+    const cw = c.width, ch = c.height;
+    const scale = Math.min(r.width / cw, r.height / ch);
+    const rw = cw * scale, rh = ch * scale;
+    const ox = (r.width - rw) / 2, oy = (r.height - rh) / 2;
+    const cx = (pos.clientX - r.left - ox) / scale, cy = (pos.clientY - r.top - oy) / scale;
+    if (cx < 0 || cx > cw || cy < 0 || cy > ch) return false;
+    const ia = this.state.image.naturalWidth / this.state.image.naturalHeight;
+    const s = this.state.selectedSize;
+    const nr = this.state.rotation % 180 !== 0;
+    const tw = nr ? s.heightCm : s.widthCm, th = nr ? s.widthCm : s.heightCm;
+    const ta = tw / th;
+    let iw, ih;
+    if (ia > ta) { iw = cw; ih = cw / ia; } else { ih = ch; iw = ch * ia; }
+    const zf = this.state.zoom / 100; iw *= zf; ih *= zf;
+    const mx = (iw - cw) / 2, my = (ih - ch) / 2;
+    const dx = mx * (this.state.offsetX / 100), dy = my * (this.state.offsetY / 100);
+    const ddx = (cw - iw) / 2 + dx, ddy = (ch - ih) / 2 + dy;
+    return cx >= ddx && cx <= ddx + iw && cy >= ddy && cy <= ddy + ih;
+  }
+
+  handleTouchStart(e) {
+    if (e.touches.length >= 2) {
+      if (!this.isTouchOnImage(e.touches[0]) || !this.isTouchOnImage(e.touches[1])) return;
+      e.preventDefault();
+      this.state.isPinching = true;
+      this.state.pinchStartDist = this.getTouchDistance(e);
+      this.state.pinchStartZoom = this.state.zoom;
       this.state.isDragging = false;
       this.els.canvasWrapper.classList.remove('dragging');
+    } else if (e.touches.length === 1) {
+      this.state.isPinching = false;
+      this.state.touchStartTime = Date.now();
+      this.state.touchMoved = false;
+      this.startDrag(e);
     }
   }
 
-  // ===================== 文件处理 =====================
-
-  handleFileSelect(e) {
-    const file = e.target.files[0];
-    if (file) this.processFile(file);
+  handleTouchMove(e) {
+    if (this.state.isPinching && e.touches.length >= 2) {
+      e.preventDefault();
+      const dist = this.getTouchDistance(e);
+      const sd = (dist - this.state.pinchStartDist) * PINCH_SENSITIVITY;
+      const nz = Math.round(this.state.pinchStartZoom * (1 + sd / this.state.pinchStartDist));
+      const clamped = Math.max(50, Math.min(150, nz));
+      this.state.zoom = clamped;
+      this.els.zoomSlider.value = clamped;
+      this.els.zoomValue.textContent = clamped + '%';
+      this.updateAdjustSummary();
+      this.scheduleRender();
+    } else if (!this.state.isPinching) {
+      if (e.touches.length === 1) {
+        const dx = Math.abs(e.touches[0].clientX - this.state.dragStartX);
+        const dy = Math.abs(e.touches[0].clientY - this.state.dragStartY);
+        if (dx > 5 || dy > 5) this.state.touchMoved = true;
+      }
+      this.onDrag(e);
+    }
   }
+
+  handleTouchEnd(e) {
+    if (this.state.isPinching) { this.state.isPinching = false; this.endDrag(); return; }
+    const elapsed = Date.now() - this.state.touchStartTime;
+    if (!this.state.touchMoved && elapsed < 300 && this.state.image) this.openFullscreenPreview(e);
+    this.endDrag();
+  }
+
+  openFullscreenPreview() {
+    if (!this.state.image) return;
+    const s = this.state.selectedSize;
+    const nr = this.state.rotation % 180 !== 0;
+    const cmW = nr ? s.heightCm : s.widthCm, cmH = nr ? s.widthCm : s.heightCm;
+    const ta = cmW / cmH;
+    let pvw = 480, pvh = Math.round(pvw / ta);
+    if (pvh > 680) { pvh = 680; pvw = Math.round(pvh * ta); }
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    renderImage(ctx, this.state.image, pvw, pvh, {
+      zoom: this.state.zoom, offsetX: this.state.offsetX, offsetY: this.state.offsetY,
+      rotation: this.state.rotation, fillColor: this.state.fillColor,
+    });
+    const dataUrl = canvas.toDataURL('image/png');
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;z-index:99998;padding:16px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);touch-action:none;';
+    overlay.onclick = (e) => { if (e.target === overlay) document.body.removeChild(overlay); };
+
+    const img = document.createElement('img');
+    img.src = dataUrl;
+    img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;transition:transform 0.15s ease;';
+    img.style.transform = 'scale(1)';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:fixed;top:16px;right:16px;width:38px;height:38px;border:none;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;-webkit-tap-highlight-color:transparent;';
+    closeBtn.onclick = () => document.body.removeChild(overlay);
+
+    const fsHint = document.createElement('div');
+    fsHint.textContent = '👉👈 双指缩放查看细节';
+    fsHint.style.cssText = 'position:fixed;bottom:40px;left:50%;transform:translateX(-50%);z-index:2;background:rgba(0,0,0,0.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:rgba(255,255,255,0.6);font-size:13px;padding:5px 14px;border-radius:16px;border:1px solid rgba(255,255,255,0.05);pointer-events:none;transition:opacity 1s ease;';
+    setTimeout(() => { fsHint.style.opacity = '0'; }, 3000);
+
+    let fsDist = 0, fsScale = 1;
+    overlay.addEventListener('touchstart', (e) => {
+      if (e.touches.length >= 2) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        fsDist = Math.sqrt(dx*dx + dy*dy);
+        fsScale = parseFloat(img.style.transform.replace('scale(','').replace(')','')) || 1;
+      }
+    }, { passive: false });
+    overlay.addEventListener('touchmove', (e) => {
+      if (e.touches.length >= 2) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const d = Math.sqrt(dx*dx + dy*dy);
+        let s = fsScale * (1 + (d / fsDist - 1) * 0.4);
+        s = Math.max(0.5, Math.min(5, s));
+        img.style.transform = `scale(${s})`;
+      }
+    }, { passive: false });
+
+    overlay.appendChild(img);
+    overlay.appendChild(fsHint);
+    overlay.appendChild(closeBtn);
+    document.body.appendChild(overlay);
+  }
+
+  handleFileSelect(e) { const file = e.target.files[0]; if (file) this.processFile(file); }
 
   async processFile(file) {
     try {
@@ -336,15 +382,11 @@ export class App {
       const img = await loadImage(file);
       this.state.image = img;
       this.state.originalFile = file;
-
-      // 重置调整参数
       this.state.zoom = DEFAULTS.zoom;
       this.state.offsetX = DEFAULTS.offsetX;
       this.state.offsetY = DEFAULTS.offsetY;
       this.state.rotation = DEFAULTS.rotation;
       this.state.fillColor = DEFAULTS.fillColor;
-
-      // 重置 UI 控件
       this.els.zoomSlider.value = DEFAULTS.zoom;
       this.els.zoomValue.textContent = DEFAULTS.zoom + '%';
       this.els.offsetXSlider.value = DEFAULTS.offsetX;
@@ -353,22 +395,16 @@ export class App {
       this.els.offsetYValue.textContent = DEFAULTS.offsetY + '%';
       this.updateAdjustSummary();
       this.setActiveColor(DEFAULTS.fillColor);
-
-      // 切换 UI 状态
       this.els.uploadPlaceholder.style.display = 'none';
       this.els.previewContainer.style.display = 'flex';
       this.els.controlsSection.style.display = 'flex';
-
-      // 卡片入场动画（交错延迟）
       const cards = this.els.controlsSection.querySelectorAll('.card');
       cards.forEach((card, i) => {
         card.classList.remove('anim-fade-in-up');
-        // 触发回流后添加动画类
         void card.offsetWidth;
         card.classList.add('anim-fade-in-up');
         card.style.setProperty('--anim-delay', `${(i + 1) * 0.12}s`);
       });
-
       this.hideLoading();
       this.renderPreview();
     } catch (err) {
@@ -385,125 +421,110 @@ export class App {
     this.els.previewContainer.style.display = 'none';
     this.els.controlsSection.style.display = 'none';
     this.els.fileInput.value = '';
-    // 清除卡片动画类
     this.els.controlsSection.querySelectorAll('.card').forEach(c => c.classList.remove('anim-fade-in-up'));
   }
 
-  // ===================== 渲染预览 =====================
+  resetImage() {
+    if (!this.state.image) return;
+    this.state.zoom = DEFAULTS.zoom;
+    this.state.offsetX = DEFAULTS.offsetX;
+    this.state.offsetY = DEFAULTS.offsetY;
+    this.state.rotation = DEFAULTS.rotation;
+    this.els.zoomSlider.value = DEFAULTS.zoom;
+    this.els.zoomValue.textContent = DEFAULTS.zoom + '%';
+    this.els.offsetXSlider.value = DEFAULTS.offsetX;
+    this.els.offsetXValue.textContent = DEFAULTS.offsetX + '%';
+    this.els.offsetYSlider.value = DEFAULTS.offsetY;
+    this.els.offsetYValue.textContent = DEFAULTS.offsetY + '%';
+    this.updateAdjustSummary();
+    this.scheduleRender();
+    this.showToast('已重置');
+  }
 
   scheduleRender() {
     if (this.renderTimer) cancelAnimationFrame(this.renderTimer);
-    // canvas 更新闪烁提示
     this.els.canvasWrapper.classList.add('updating');
     this.renderTimer = requestAnimationFrame(() => this.renderPreview());
   }
 
   renderPreview() {
     if (!this.state.image) return;
-
     const canvas = this.els.previewCanvas;
     const ctx = canvas.getContext('2d');
     const size = this.state.selectedSize;
-
-    // 处理旋转导致的宽高交换（使用物理厘米计算比例）
-    const needsRotation = this.state.rotation % 180 !== 0;
-    const cmW = needsRotation ? size.heightCm : size.widthCm;
-    const cmH = needsRotation ? size.widthCm : size.heightCm;
-
-    // 计算预览尺寸
-    const previewSize = getPreviewSize(cmW, cmH, 260);
+    const nr = this.state.rotation % 180 !== 0;
+    const cmW = nr ? size.heightCm : size.widthCm, cmH = nr ? size.widthCm : size.heightCm;
+    const ps = getPreviewSize(cmW, cmH, 200);
     const wrapper = this.els.canvasWrapper;
-
-    // 更新 canvas 尺寸（逻辑像素）
-    canvas.width = previewSize.width;
-    canvas.height = previewSize.height;
-
-    // 更新 wrapper 样式以保持比例
-    wrapper.style.height = previewSize.height + 'px';
-
-    // 渲染到预览
-    renderImage(ctx, this.state.image, previewSize.width, previewSize.height, {
-      zoom: this.state.zoom,
-      offsetX: this.state.offsetX,
-      offsetY: this.state.offsetY,
-      rotation: this.state.rotation,
-      fillColor: this.state.fillColor,
+    canvas.width = ps.width;
+    canvas.height = ps.height;
+    wrapper.style.height = ps.height + 'px';
+    renderImage(ctx, this.state.image, ps.width, ps.height, {
+      zoom: this.state.zoom, offsetX: this.state.offsetX, offsetY: this.state.offsetY,
+      rotation: this.state.rotation, fillColor: this.state.fillColor,
     });
-
-    // 移除更新闪烁
     this.els.canvasWrapper.classList.remove('updating');
   }
 
-  // ===================== 下载 =====================
-
   async handleDownload() {
     if (!this.state.image) return;
-
     try {
       this.els.downloadBtn.disabled = true;
       this.els.downloadBtn.textContent = '处理中...';
-
       const size = this.state.selectedSize;
-      const dpi = this.state.quality;
+      const mode = this.state.quality; // 0=原图(1x), 2=高清(2x)
 
-      // 由物理厘米 × DPI 计算输出像素尺寸
-      const needsRotation = this.state.rotation % 180 !== 0;
-      const cmW = needsRotation ? size.heightCm : size.widthCm;
-      const cmH = needsRotation ? size.widthCm : size.heightCm;
-      const pxW = cmToPx(cmW, dpi);
-      const pxH = cmToPx(cmH, dpi);
+      const nr = this.state.rotation % 180 !== 0;
+      const cmW = nr ? size.heightCm : size.widthCm, cmH = nr ? size.widthCm : size.heightCm;
+      const targetAspect = cmW / cmH;
 
-      // 创建离屏 canvas 进行高质量渲染
+      // 基于图片原始分辨率计算输出尺寸
+      const imgW = this.state.image.naturalWidth;
+      const imgH = this.state.image.naturalHeight;
+      let pxW, pxH;
+      if (imgW / imgH > targetAspect) {
+        pxW = Math.round(imgW);
+        pxH = Math.round(imgW / targetAspect);
+      } else {
+        pxH = Math.round(imgH);
+        pxW = Math.round(imgH * targetAspect);
+      }
+
+      // 高清模式: 2倍分辨率
+      const multiplier = mode > 0 ? mode : 1;
+      pxW = Math.round(pxW * multiplier);
+      pxH = Math.round(pxH * multiplier);
+
+      // 安全上限
+      const MAX = 4096;
+      if (pxW > MAX || pxH > MAX) {
+        const ratio = Math.min(MAX / pxW, MAX / pxH);
+        pxW = Math.round(pxW * ratio);
+        pxH = Math.round(pxH * ratio);
+      }
+
       const offscreen = document.createElement('canvas');
       const ctx = offscreen.getContext('2d');
-
       renderImage(ctx, this.state.image, pxW, pxH, {
-        zoom: this.state.zoom,
-        offsetX: this.state.offsetX,
-        offsetY: this.state.offsetY,
-        rotation: this.state.rotation,
-        fillColor: this.state.fillColor,
+        zoom: this.state.zoom, offsetX: this.state.offsetX, offsetY: this.state.offsetY,
+        rotation: this.state.rotation, fillColor: this.state.fillColor,
       });
-
-      // 确定输出格式
-      const format = 'image/png';
-      const filename = getOutputFilename(size.name, dpi);
-
-      // 小延迟让 UI 更新
+      const filename = getOutputFilename(size.name, mode);
       await new Promise(r => setTimeout(r, 50));
-
-      downloadImage(offscreen, filename, format, dpi);
+      downloadImage(offscreen, filename);
       this.showToast('图片已生成，开始下载');
     } catch (err) {
       this.showToast('下载失败，请重试');
       console.error('下载失败:', err);
     } finally {
       this.els.downloadBtn.disabled = false;
-      this.els.downloadBtn.innerHTML = `
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        下载高清图片
-      `;
+      this.els.downloadBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 下载图片';
     }
   }
 
-  // ===================== 工具方法 =====================
-
-  animateRotateBtn(btn) {
-    btn.classList.remove('btn-rotate-spin');
-    void btn.offsetWidth;
-    btn.classList.add('btn-rotate-spin');
-  }
-
-  updateAdjustSummary() {
-    this.els.adjustSummaryText.textContent = `缩放 ${this.state.zoom}% · 位置微调`;
-  }
+  updateAdjustSummary() { this.els.adjustSummaryText.textContent = `缩放 ${this.state.zoom}% · 位置微调`; }
 
   showLoading() {
-    // 移除旧的 loading
     this.hideLoading();
     const overlay = document.createElement('div');
     overlay.className = 'loading-overlay';
@@ -512,27 +533,18 @@ export class App {
     this.els.uploadArea.appendChild(overlay);
   }
 
-  hideLoading() {
-    const existing = document.getElementById('loadingOverlay');
-    if (existing) existing.remove();
-  }
+  hideLoading() { const existing = document.getElementById('loadingOverlay'); if (existing) existing.remove(); }
 
   showToast(msg) {
     const existing = document.querySelector('.toast');
     if (existing) existing.remove();
-
     const toast = document.createElement('div');
     toast.className = 'toast';
     toast.textContent = msg;
     document.body.appendChild(toast);
-
-    // 强制回流后添加 show
     requestAnimationFrame(() => {
       toast.classList.add('show');
-      setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 300);
-      }, 2000);
+      setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 2000);
     });
   }
 }

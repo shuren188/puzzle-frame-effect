@@ -12,21 +12,12 @@
 <body>
   <div id="app">
     <div class="bg-glow"></div>
+    <div class="bg-glow-pink"></div>
+    <div class="bg-grid"></div>
     <!-- 标题区 -->
     <header class="header">
-      <div class="header-icon-wrap">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 7V5a2 2 0 0 1 2-2h2" stroke="#58fdfd"/>
-          <path d="M17 3h2a2 2 0 0 1 2 2v2" stroke="#58fdfd"/>
-          <path d="M21 17v2a2 2 0 0 1-2 2h-2" stroke="#b37aeb"/>
-          <path d="M7 21H5a2 2 0 0 1-2-2v-2" stroke="#b37aeb"/>
-          <rect x="7" y="7" width="10" height="10" rx="1.5" stroke="#fba7ae" stroke-width="1.2"/>
-          <line x1="12" y1="7" x2="12" y2="17" stroke="#fba7ae" stroke-width="0.8" opacity="0.4"/>
-          <line x1="7" y1="12" x2="17" y2="12" stroke="#fba7ae" stroke-width="0.8" opacity="0.4"/>
-        </svg>
-      </div>
       <h1 class="gradient-text">拼图裁剪效果图</h1>
-      <p class="header-sub">完整保留画面 · 智能白边适配 · 35至520片</p>
+      <p class="header-sub">自由裁剪 · 自定义填充颜色 · 自定义调整图像</p>
     </header>
 
     <!-- 装饰分隔线 -->
@@ -44,16 +35,20 @@
             </svg>
           </div>
           <p class="upload-text">点击上传或拖拽图片</p>
-          <p class="upload-hint">支持 JPG / PNG / WebP / TIFF 等格式</p>
+          <p class="upload-hint">情侣照/艺术照/日常生活照/全家福/集体照/动漫/宠物/明星等均可自由定制</p>
         </div>
         <div class="preview-container" id="previewContainer" style="display:none">
           <div class="preview-header">
             <span class="preview-title">拼图预览</span>
-            <button class="btn btn-ghost btn-sm" id="reUploadBtn">重新上传</button>
+            <div class="preview-actions">
+              <button class="btn btn-ghost btn-sm" id="resetBtn">↺ 重置</button>
+              <button class="btn btn-ghost btn-sm" id="reUploadBtn">重新上传</button>
+            </div>
           </div>
           <div class="preview-canvas-wrapper" id="canvasWrapper">
             <canvas id="previewCanvas"></canvas>
             <div class="drag-hint" id="dragHint">↕ 拖拽调整位置</div>
+            <div class="pinch-hint" id="pinchHint">👉👈 双指捏合缩放</div>
           </div>
         </div>
         <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/tiff,image/bmp,image/gif,image/svg+xml,image/avif" hidden />
@@ -136,10 +131,10 @@
                 </label>
                 <input type="range" class="slider" id="offsetYSlider" min="-100" max="100" value="0" step="1" />
               </div>
-              <!-- 旋转 -->
+              <!-- 旋转按钮 -->
               <div class="rotate-group">
-                <button class="btn btn-outline btn-icon" id="rotateLeftBtn">↺ 左转90°</button>
-                <button class="btn btn-outline btn-icon" id="rotateRightBtn">↻ 右转90°</button>
+                <button class="btn btn-rotate" id="rotateLeftBtn">↺ 左转90°</button>
+                <button class="btn btn-rotate" id="rotateRightBtn">↻ 右转90°</button>
               </div>
             </div>
           </details>
@@ -161,7 +156,7 @@
           <polyline points="7 10 12 15 17 10"/>
           <line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
-        下载高清图片
+        下载图片
       </button>
     </section>
   </div>
