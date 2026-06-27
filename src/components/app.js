@@ -513,6 +513,9 @@ export class App {
 
   renderNormalPreview(pc) {
     const canvas = this.els.previewCanvas;
+    // 清除可能残留的相框模式内联样式
+    canvas.style.width = '';
+    canvas.style.height = '';
     const ctx = canvas.getContext('2d');
     canvas.width = pc.width;
     canvas.height = pc.height;
