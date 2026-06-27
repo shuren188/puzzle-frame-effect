@@ -1,8 +1,8 @@
 {
-  "name": "puzzle-photo-tool",
+  "name": "puzzle-frame-effect",
   "private": true,
   "version": "1.0.0",
-  "description": "拼图图片自适应工具 - 上传照片，适配拼图尺寸，保持照片完整性，添加白边填充",
+  "description": "拼图裁剪相框效果图 - 在拼图裁剪基础上新增透明PNG相框预览功能，支持横版/竖版多尺寸相框叠加",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "gh-pages": "^6.3.0",
     "vite": "^6.3.0"
   }
 }

@@ -2,6 +2,7 @@ import { SIZES, QUALITIES, PRESET_COLORS, DEFAULTS, DRAG_SENSITIVITY } from '../
 import { renderImage, loadImage, getPreviewSize } from '../utils/imageProcessor.js';
 import { downloadImage, getOutputFilename } from '../utils/download.js';
 import { ColorPicker } from './ColorPicker.js';
+import { renderFrame, loadFrameImage, getFrameKey, getFrameDisplaySize } from '../utils/frameProcessor.js';
 
 const PINCH_SENSITIVITY = 0.45;
 
@@ -21,6 +22,7 @@ export class App {
       isDragging: false, dragStartX: 0, dragStartY: 0, dragStartOffsetX: 0, dragStartOffsetY: 0,
       isPinching: false, pinchStartDist: 0, pinchStartZoom: 100,
       touchStartTime: 0, touchMoved: false,
+      frameEnabled: false, frameImages: {}, currentFrameKey: null,
     };
     this.renderTimer = null;
     this.init();
@@ -56,6 +58,9 @@ export class App {
     this.els.rotateLeftBtn = document.getElementById('rotateLeftBtn');
     this.els.rotateRightBtn = document.getElementById('rotateRightBtn');
     this.els.pinchHint = document.getElementById('pinchHint');
+    this.els.panelFrame = document.getElementById('panelFrame');
+    this.els.frameToggle = document.getElementById('frameToggle');
+    this.els.frameInfo = document.getElementById('frameInfo');
   }
 
   init() {
@@ -103,6 +108,7 @@ export class App {
       this.els.sizeScroll.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       this.state.selectedSize = SIZES[parseInt(btn.dataset.index)];
+      if (this.state.frameEnabled) this.preloadCurrentFrame();
       this.scheduleRender();
     });
 
@@ -121,7 +127,16 @@ export class App {
         btn.classList.add('active');
         this.els.panelAdjust.classList.toggle('active', btn.dataset.tab === 'adjust');
         this.els.panelColor.classList.toggle('active', btn.dataset.tab === 'color');
+        this.els.panelFrame.classList.toggle('active', btn.dataset.tab === 'frame');
       });
+    });
+
+    // 相框开关
+    this.els.frameToggle.addEventListener('change', (e) => {
+      this.state.frameEnabled = e.target.checked;
+      this.updateFrameInfo();
+      if (this.state.frameEnabled) this.preloadCurrentFrame();
+      this.scheduleRender();
     });
 
     this.els.zoomSlider.addEventListener('input', () => {
@@ -148,12 +163,14 @@ export class App {
       this.state.rotation = (this.state.rotation - 90 + 360) % 360;
       this.els.rotateLeftBtn.classList.add('btn-clicked');
       setTimeout(() => this.els.rotateLeftBtn.classList.remove('btn-clicked'), 200);
+      if (this.state.frameEnabled) this.preloadCurrentFrame();
       this.scheduleRender();
     };
     const rotateRight = () => {
       this.state.rotation = (this.state.rotation + 90) % 360;
       this.els.rotateRightBtn.classList.add('btn-clicked');
       setTimeout(() => this.els.rotateRightBtn.classList.remove('btn-clicked'), 200);
+      if (this.state.frameEnabled) this.preloadCurrentFrame();
       this.scheduleRender();
     };
     this.els.rotateLeftBtn.addEventListener('click', rotateLeft);
@@ -319,13 +336,28 @@ export class App {
     const ta = cmW / cmH;
     let pvw = 480, pvh = Math.round(pvw / ta);
     if (pvh > 680) { pvh = 680; pvw = Math.round(pvh * ta); }
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    renderImage(ctx, this.state.image, pvw, pvh, {
+
+    // 生成全屏 PuzzleCanvas（同组参数，始终调用一次 renderImage）
+    const puzzleCanvas = document.createElement('canvas');
+    const pcCtx = puzzleCanvas.getContext('2d');
+    renderImage(pcCtx, this.state.image, pvw, pvh, {
       zoom: this.state.zoom, offsetX: this.state.offsetX, offsetY: this.state.offsetY,
       rotation: this.state.rotation, fillColor: this.state.fillColor,
     });
-    const dataUrl = canvas.toDataURL('image/png');
+
+    // 计算最终显示用的画布和dataUrl
+    let displayCanvas = puzzleCanvas;
+    if (this.state.frameEnabled) {
+      const frameKey = this.state.currentFrameKey;
+      const frameImg = this.state.frameImages[frameKey];
+      if (frameImg && frameKey) {
+        const fsCanvas = document.createElement('canvas');
+        const fsCtx = fsCanvas.getContext('2d');
+        renderFrame(fsCtx, puzzleCanvas, frameKey, frameImg);
+        displayCanvas = fsCanvas;
+      }
+    }
+    const dataUrl = displayCanvas.toDataURL('image/png');
 
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;z-index:99998;padding:16px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);touch-action:none;';
@@ -407,6 +439,7 @@ export class App {
       });
       this.hideLoading();
       this.renderPreview();
+      this.preloadCurrentFrame();
     } catch (err) {
       this.hideLoading();
       this.showToast('图片加载失败，请重试');
@@ -417,10 +450,15 @@ export class App {
   resetToUpload() {
     this.state.image = null;
     this.state.originalFile = null;
+    this.state.puzzleCanvas = null;
+    this.state.frameEnabled = false;
+    this.state.frameImages = {};
+    this.state.currentFrameKey = null;
     this.els.uploadPlaceholder.style.display = 'flex';
     this.els.previewContainer.style.display = 'none';
     this.els.controlsSection.style.display = 'none';
     this.els.fileInput.value = '';
+    this.els.frameToggle.checked = false;
     this.els.controlsSection.querySelectorAll('.card').forEach(c => c.classList.remove('anim-fade-in-up'));
   }
 
@@ -430,6 +468,7 @@ export class App {
     this.state.offsetX = DEFAULTS.offsetX;
     this.state.offsetY = DEFAULTS.offsetY;
     this.state.rotation = DEFAULTS.rotation;
+    this.state.puzzleCanvas = null;
     this.els.zoomSlider.value = DEFAULTS.zoom;
     this.els.zoomValue.textContent = DEFAULTS.zoom + '%';
     this.els.offsetXSlider.value = DEFAULTS.offsetX;
@@ -449,21 +488,52 @@ export class App {
 
   renderPreview() {
     if (!this.state.image) return;
-    const canvas = this.els.previewCanvas;
-    const ctx = canvas.getContext('2d');
     const size = this.state.selectedSize;
     const nr = this.state.rotation % 180 !== 0;
     const cmW = nr ? size.heightCm : size.widthCm, cmH = nr ? size.widthCm : size.heightCm;
     const ps = getPreviewSize(cmW, cmH, 200);
-    const wrapper = this.els.canvasWrapper;
-    canvas.width = ps.width;
-    canvas.height = ps.height;
-    wrapper.style.height = ps.height + 'px';
-    renderImage(ctx, this.state.image, ps.width, ps.height, {
+
+    // Step 1: 生成PuzzleCanvas（唯一一次renderImage调用）
+    const pc = this.state.puzzleCanvas || (this.state.puzzleCanvas = document.createElement('canvas'));
+    pc.width = ps.width;
+    pc.height = ps.height;
+    renderImage(pc.getContext('2d'), this.state.image, ps.width, ps.height, {
       zoom: this.state.zoom, offsetX: this.state.offsetX, offsetY: this.state.offsetY,
       rotation: this.state.rotation, fillColor: this.state.fillColor,
     });
+
+    // Step 2: 显示（带相框或不带）
+    if (this.state.frameEnabled) {
+      this.renderFramePreview(pc);
+    } else {
+      this.renderNormalPreview(pc);
+    }
     this.els.canvasWrapper.classList.remove('updating');
+  }
+
+  renderNormalPreview(pc) {
+    const canvas = this.els.previewCanvas;
+    const ctx = canvas.getContext('2d');
+    canvas.width = pc.width;
+    canvas.height = pc.height;
+    this.els.canvasWrapper.style.height = pc.height + 'px';
+    ctx.drawImage(pc, 0, 0);
+  }
+
+  renderFramePreview(pc) {
+    const frameKey = this.state.currentFrameKey;
+    const frameImg = this.state.frameImages[frameKey];
+    if (!frameImg || !frameKey) {
+      this.renderNormalPreview(pc);
+      return;
+    }
+    const ds = getFrameDisplaySize(frameKey, 200);
+    const canvas = this.els.previewCanvas;
+    const ctx = canvas.getContext('2d');
+    // 清除之前的transform
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    renderFrame(ctx, pc, frameKey, frameImg, ds.width, ds.height);
+    this.els.canvasWrapper.style.height = ds.height + 'px';
   }
 
   async handleDownload() {
@@ -523,6 +593,40 @@ export class App {
   }
 
   updateAdjustSummary() { this.els.adjustSummaryText.textContent = `缩放 ${this.state.zoom}% · 位置微调`; }
+
+  updateFrameInfo() {
+    const key = this.state.currentFrameKey;
+    const on = this.state.frameEnabled;
+    if (!on) {
+      this.els.frameInfo.textContent = '当前：未开启相框效果';
+      return;
+    }
+    const parts = (key || '').split('_');
+    const size = parts[0] || '';
+    const orient = parts[1] === 'h' ? '横版' : parts[1] === 'v' ? '竖版' : '';
+    this.els.frameInfo.textContent = `当前：${size}片 ${orient}相框`;
+  }
+
+  async preloadCurrentFrame() {
+    if (!this.state.image) return;
+    try {
+      const sizeIndex = SIZES.indexOf(this.state.selectedSize);
+      if (sizeIndex < 0) return;
+      const nr = this.state.rotation % 180 !== 0;
+      const pcW = nr ? this.state.selectedSize.heightCm : this.state.selectedSize.widthCm;
+      const pcH = nr ? this.state.selectedSize.widthCm : this.state.selectedSize.heightCm;
+      const isLandscape = pcW >= pcH;
+      const frameKey = getFrameKey(sizeIndex, isLandscape);
+      this.state.currentFrameKey = frameKey;
+      if (!this.state.frameImages[frameKey]) {
+        const img = await loadFrameImage(frameKey);
+        this.state.frameImages[frameKey] = img;
+      }
+      this.updateFrameInfo();
+    } catch (e) {
+      console.warn('相框预加载失败:', e);
+    }
+  }
 
   showLoading() {
     this.hideLoading();
