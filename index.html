@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>拼图裁剪相框效果图</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <script type="module" crossorigin src="./assets/index-C182YDfo.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DBRRuiap.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- 上传界面 -->
+    <div class="upload-area" id="uploadArea">
+      <div class="upload-card" id="uploadPlaceholder">
+        <p class="upload-title">拼图DIY裁剪效果图</p>
+        <p class="upload-subtitle">自由裁剪·自由编辑·高清放大</p>
+        <div class="upload-box">
+          <div class="upload-box-scan"></div>
+          <div class="upload-box-icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/>
+            </svg>
+          </div>
+          <p class="upload-box-text">点击上传或拖拽图片</p>
+          <p class="upload-box-sub">情侣照/艺术照/日常生活照/全家福/集体照/<br>动漫/宠物/明星等均可自由定制</p>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/tiff,image/bmp,image/gif,image/svg+xml,image/avif" hidden />
+    </div>
+
+    <!-- 编辑器界面 -->
+    <div id="editorArea" class="editor-area" style="display:none">
+
+      <!-- 顶栏 -->
+      <div class="top-bar" id="topBar">
+        <div class="top-left">
+          <button class="glass-btn" id="resetBtn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            <span>重置</span>
+          </button>
+          <button class="glass-btn" id="reUploadBtn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span>重新上传</span>
+          </button>
+        </div>
+        <div class="top-center" id="pinchHint">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 9a2 2 0 0 1 2-2V3a2 2 0 1 1 4 0v4"/><path d="M5 15a2 2 0 0 0 2 2v4a2 2 0 1 0 4 0v-4"/>
+            <path d="M19 9a2 2 0 0 0-2-2V3a2 2 0 1 0-4 0v4"/><path d="M19 15a2 2 0 0 1-2 2v4a2 2 0 1 1-4 0v-4"/>
+            <path d="M7 11v2h10v-2"/><path d="M12 7v4"/>
+          </svg>
+          <span>双指捏合缩放</span>
+        </div>
+        <div class="top-right">
+          <button class="glass-btn glass-btn-accent" id="downloadBtn" title="下载图片">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span>下载图片</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 信息条 -->
+      <div class="info-bar"><span id="infoText">35片 · 10×15cm · 缩放100%</span></div>
+
+      <!-- 预览区（包裹层用于相框开关定位） -->
+      <div class="preview-area" id="previewArea">
+        <div class="canvas-wrap" id="canvasWrapper">
+          <canvas id="previewCanvas"></canvas>
+          <div class="drag-hint" id="dragHint">↕ 拖拽调整位置</div>
+        </div>
+        <!-- 相框开关（在canvas-wrap外部，避免touch-action:none影响） -->
+        <div class="frame-switch" id="frameSwitch">
+          <span class="frame-switch-label">添加相框</span>
+          <label class="switch">
+            <input type="checkbox" id="frameToggle">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 底部工具栏（标题行） -->
+      <div class="tool-bar" id="toolBar">
+        <button class="tool-btn active" data-tool="size">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          <span>拼图尺寸</span>
+        </button>
+        <button class="tool-btn" data-tool="quality">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <span>画质修复</span>
+        </button>
+        <button class="tool-btn" data-tool="adjust">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v16"/><path d="M10 8v12"/><path d="M6 12v8"/><path d="M18 6v14"/></svg>
+          <span>旋转角度</span>
+        </button>
+        <button class="tool-btn" data-tool="color">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+          <span>填充颜色</span>
+        </button>
+      </div>
+
+      <!-- 工具功能内容区 -->
+      <div class="tool-content" id="toolContent">
+        <div class="tool-content-inner" id="toolContentInner"></div>
+      </div>
+    </div>
+
+    <!-- 全屏遮罩 -->
+    <div class="fs-overlay" id="fsOverlay" style="display:none"></div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+reference.png
+# 源相框PNG（public/frames/下有副本用于部署）
+带框效果图-横版/
+带框效果图-竖版/

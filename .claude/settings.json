@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git tag *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git status *)",
+      "Bash(npx vite *)",
+      "Bash(npx gh-pages *)",
+      "Bash(ls *)",
+      "Bash(python *)",
+      "Bash(sleep *)",
+      "Bash(curl *)"
+    ]
+  }
+}
