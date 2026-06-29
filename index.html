@@ -6,175 +6,105 @@
   <meta name="format-detection" content="telephone=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>拼图裁剪相框效果图 - 在线照片拼图尺寸适配与相框预览</title>
+  <title>拼图裁剪相框效果图</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
 </head>
 <body>
   <div id="app">
+    <!-- 背景装饰 -->
     <div class="bg-glow"></div>
     <div class="bg-glow-pink"></div>
     <div class="bg-grid"></div>
-    <!-- 标题区 -->
-    <header class="header">
-      <h1 class="gradient-text">拼图裁剪效果图</h1>
-      <p class="header-sub">自由裁剪 · 自定义填充颜色 · 自定义调整图像</p>
-    </header>
 
-    <!-- 装饰分隔线 -->
-    <div class="deco-line cyan"></div>
+    <!-- 上传区（上传前全屏） -->
+    <div class="upload-area" id="uploadArea">
+      <div class="upload-placeholder" id="uploadPlaceholder">
+        <div class="upload-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21,15 16,10 5,21"/>
+          </svg>
+        </div>
+        <p class="upload-text">照片裁成拼图</p>
+        <p class="upload-hint">保持照片完整 · 白边适配 · 35-520片</p>
+      </div>
+      <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/tiff,image/bmp,image/gif,image/svg+xml,image/avif" hidden />
+    </div>
 
-    <!-- 上传/预览区 -->
-    <section class="card preview-card" id="previewSection">
-      <div class="upload-area" id="uploadArea">
-        <div class="upload-placeholder" id="uploadPlaceholder">
-          <div class="upload-icon">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <circle cx="8.5" cy="8.5" r="1.5"/>
-              <polyline points="21,15 16,10 5,21"/>
+    <!-- 编辑器区（上传后显示） -->
+    <div id="editorArea" class="editor-area" style="display:none">
+      <!-- 顶栏 -->
+      <div class="top-bar" id="topBar">
+        <div class="top-left">
+          <button class="top-btn" id="resetBtn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          </button>
+          <button class="top-btn top-btn-text" id="reUploadBtn">重新上传</button>
+        </div>
+        <div class="top-right">
+          <button class="top-btn top-download" id="downloadBtn" title="下载图片">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-          </div>
-          <p class="upload-text">点击上传或拖拽图片</p>
-          <p class="upload-hint">情侣照/艺术照/日常生活照/全家福/集体照/动漫/宠物/明星等均可自由定制</p>
-        </div>
-        <div class="preview-container" id="previewContainer" style="display:none">
-          <div class="preview-header">
-            <span class="preview-title">拼图预览</span>
-            <div class="preview-actions">
-              <button class="btn btn-ghost btn-sm" id="resetBtn">↺ 重置</button>
-              <button class="btn btn-ghost btn-sm" id="reUploadBtn">重新上传</button>
-            </div>
-          </div>
-          <div class="preview-canvas-wrapper" id="canvasWrapper">
-            <canvas id="previewCanvas"></canvas>
-            <div class="drag-hint" id="dragHint">↕ 拖拽调整位置</div>
-            <div class="pinch-hint" id="pinchHint">👉👈 双指捏合缩放</div>
-          </div>
-        </div>
-        <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/tiff,image/bmp,image/gif,image/svg+xml,image/avif" hidden />
-      </div>
-    </section>
-
-    <!-- 控制区 -->
-    <section class="controls" id="controlsSection" style="display:none">
-      <!-- 装饰分隔线 -->
-      <div class="deco-line purple"></div>
-
-      <!-- 尺寸选择 -->
-      <div class="card controls-card">
-        <label class="control-label">
-          <svg class="label-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-          选择尺寸
-        </label>
-        <div class="size-scroll" id="sizeScroll">
-          <!-- JS 生成 -->
-        </div>
-      </div>
-
-      <div class="deco-line pink"></div>
-
-      <!-- 输出质量 -->
-      <div class="card controls-card">
-        <div class="quality-row">
-          <label class="control-label control-label-v">
-            <svg class="label-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            <span class="label-v-text">输出<br>质量</span>
-          </label>
-          <div class="quality-group" id="qualityGroup">
-            <!-- JS 生成 -->
-          </div>
-        </div>
-      </div>
-
-      <!-- 标签切换 -->
-      <div class="card controls-card">
-        <div class="tab-bar">
-          <button class="tab-btn active" data-tab="adjust">
-            <svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-            调整
-          </button>
-          <button class="tab-btn" data-tab="color">
-            <svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-            颜色
-          </button>
-          <button class="tab-btn" data-tab="frame">
-            <svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
-            相框
           </button>
         </div>
-
-        <!-- 调整面板 -->
-        <div class="tab-panel active" id="panelAdjust">
-          <details class="adjust-details" id="adjustDetails">
-            <summary class="adjust-summary">
-              <span id="adjustSummaryText">缩放 100% · 位置微调</span>
-              <span class="chevron">▼</span>
-            </summary>
-            <div class="adjust-content">
-              <!-- 缩放 -->
-              <div class="slider-group">
-                <label class="slider-label">
-                  <span>缩放</span>
-                  <span class="slider-value" id="zoomValue">100%</span>
-                </label>
-                <input type="range" class="slider" id="zoomSlider" min="50" max="150" value="100" step="1" />
-              </div>
-              <!-- 水平偏移 -->
-              <div class="slider-group">
-                <label class="slider-label">
-                  <span>水平偏移</span>
-                  <span class="slider-value" id="offsetXValue">0%</span>
-                </label>
-                <input type="range" class="slider" id="offsetXSlider" min="-100" max="100" value="0" step="1" />
-              </div>
-              <!-- 垂直偏移 -->
-              <div class="slider-group">
-                <label class="slider-label">
-                  <span>垂直偏移</span>
-                  <span class="slider-value" id="offsetYValue">0%</span>
-                </label>
-                <input type="range" class="slider" id="offsetYSlider" min="-100" max="100" value="0" step="1" />
-              </div>
-              <!-- 旋转按钮 -->
-              <div class="rotate-group">
-                <button class="btn btn-rotate" id="rotateLeftBtn">↺ 左转90°</button>
-                <button class="btn btn-rotate" id="rotateRightBtn">↻ 右转90°</button>
-              </div>
-            </div>
-          </details>
-        </div>
-
-        <!-- 颜色面板 -->
-        <div class="tab-panel" id="panelColor">
-          <div class="color-grid" id="colorGrid">
-            <!-- JS 生成 -->
-          </div>
-        </div>
-
-        <!-- 相框面板 -->
-        <div class="tab-panel" id="panelFrame">
-          <div class="frame-toggle-row">
-            <span class="frame-toggle-label">相框效果</span>
-            <label class="switch">
-              <input type="checkbox" id="frameToggle">
-              <span class="switch-slider"></span>
-            </label>
-          </div>
-          <div class="frame-info" id="frameInfo">开启后预览将叠加装饰相框</div>
-        </div>
       </div>
 
-      <!-- 下载按钮 -->
-      <div class="deco-line cyan-subtle"></div>
-      <button class="btn btn-download" id="downloadBtn">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        下载图片
-      </button>
-    </section>
+      <!-- 状态栏（极简信息） -->
+      <div class="info-bar" id="infoBar">
+        <span id="infoText">35片 · 1181×1772</span>
+      </div>
+
+      <!-- 预览区（弹性填充） -->
+      <div class="canvas-wrap" id="canvasWrapper">
+        <canvas id="previewCanvas"></canvas>
+        <div class="drag-hint" id="dragHint">↕ 拖拽调整位置</div>
+      </div>
+
+      <!-- 底部工具栏 -->
+      <div class="tool-bar" id="toolBar">
+        <button class="tool-btn" data-tool="size">
+          <svg class="tool-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          <span>尺寸</span>
+        </button>
+        <button class="tool-btn" data-tool="quality">
+          <svg class="tool-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <span>质量</span>
+        </button>
+        <button class="tool-btn" data-tool="adjust">
+          <svg class="tool-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+          <span>调整</span>
+        </button>
+        <button class="tool-btn" data-tool="color">
+          <svg class="tool-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+          <span>颜色</span>
+        </button>
+        <button class="tool-btn" data-tool="frame">
+          <svg class="tool-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          <span>相框</span>
+        </button>
+      </div>
+
+      <!-- 工具弹出面板（底部弹出） -->
+      <div class="tool-sheet" id="toolSheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+          <span class="sheet-title" id="sheetTitle">尺寸</span>
+          <button class="sheet-close-btn" id="sheetClose">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="sheet-body" id="sheetBody">
+          <!-- 动态渲染 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 全屏预览遮罩 -->
+    <div class="fs-overlay" id="fsOverlay" style="display:none"></div>
   </div>
 
   <script type="module" src="/src/main.js"></script>

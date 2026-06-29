@@ -9,7 +9,7 @@ const PINCH_SENSITIVITY = 0.45;
 export class App {
   constructor() {
     this.els = {};
-    this.cacheDOM();
+    this.activeTool = null;
     this.state = {
       image: null, originalFile: null,
       selectedSize: SIZES[DEFAULTS.sizeIndex],
@@ -22,74 +22,37 @@ export class App {
       isDragging: false, dragStartX: 0, dragStartY: 0, dragStartOffsetX: 0, dragStartOffsetY: 0,
       isPinching: false, pinchStartDist: 0, pinchStartZoom: 100,
       touchStartTime: 0, touchMoved: false,
-      frameEnabled: false, frameImages: {}, currentFrameKey: null,
+      frameEnabled: false, frameImages: {}, currentFrameKey: null, puzzleCanvas: null,
     };
     this.renderTimer = null;
+    this.cacheDOM();
     this.init();
   }
 
   cacheDOM() {
-    this.els.app = document.getElementById('app');
-    this.els.uploadArea = document.getElementById('uploadArea');
-    this.els.uploadPlaceholder = document.getElementById('uploadPlaceholder');
-    this.els.previewContainer = document.getElementById('previewContainer');
-    this.els.previewCanvas = document.getElementById('previewCanvas');
-    this.els.canvasWrapper = document.getElementById('canvasWrapper');
-    this.els.dragHint = document.getElementById('dragHint');
-    this.els.fileInput = document.getElementById('fileInput');
-    this.els.reUploadBtn = document.getElementById('reUploadBtn');
-    this.els.resetBtn = document.getElementById('resetBtn');
-    this.els.controlsSection = document.getElementById('controlsSection');
-    this.els.sizeScroll = document.getElementById('sizeScroll');
-    this.els.qualityGroup = document.getElementById('qualityGroup');
-    this.els.colorGrid = document.getElementById('colorGrid');
-    this.els.downloadBtn = document.getElementById('downloadBtn');
-    this.els.tabBtns = document.querySelectorAll('.tab-btn');
-    this.els.panelAdjust = document.getElementById('panelAdjust');
-    this.els.panelColor = document.getElementById('panelColor');
-    this.els.adjustDetails = document.getElementById('adjustDetails');
-    this.els.adjustSummaryText = document.getElementById('adjustSummaryText');
-    this.els.zoomSlider = document.getElementById('zoomSlider');
-    this.els.zoomValue = document.getElementById('zoomValue');
-    this.els.offsetXSlider = document.getElementById('offsetXSlider');
-    this.els.offsetXValue = document.getElementById('offsetXValue');
-    this.els.offsetYSlider = document.getElementById('offsetYSlider');
-    this.els.offsetYValue = document.getElementById('offsetYValue');
-    this.els.rotateLeftBtn = document.getElementById('rotateLeftBtn');
-    this.els.rotateRightBtn = document.getElementById('rotateRightBtn');
-    this.els.pinchHint = document.getElementById('pinchHint');
-    this.els.panelFrame = document.getElementById('panelFrame');
-    this.els.frameToggle = document.getElementById('frameToggle');
-    this.els.frameInfo = document.getElementById('frameInfo');
+    const $ = (id) => document.getElementById(id);
+    this.els.uploadArea = $('uploadArea');
+    this.els.uploadPlaceholder = $('uploadPlaceholder');
+    this.els.fileInput = $('fileInput');
+    this.els.editorArea = $('editorArea');
+    this.els.topBar = $('topBar');
+    this.els.resetBtn = $('resetBtn');
+    this.els.reUploadBtn = $('reUploadBtn');
+    this.els.downloadBtn = $('downloadBtn');
+    this.els.infoText = $('infoText');
+    this.els.canvasWrapper = $('canvasWrapper');
+    this.els.previewCanvas = $('previewCanvas');
+    this.els.dragHint = $('dragHint');
+    this.els.toolBar = $('toolBar');
+    this.els.toolBtns = this.els.toolBar.querySelectorAll('.tool-btn');
+    this.els.toolSheet = $('toolSheet');
+    this.els.sheetTitle = $('sheetTitle');
+    this.els.sheetBody = $('sheetBody');
+    this.els.sheetClose = $('sheetClose');
   }
 
   init() {
-    this.renderSizeButtons();
-    this.renderQualityButtons();
-    this.renderColorButtons();
-    this.bindEvents();
-  }
-
-  renderSizeButtons() {
-    this.els.sizeScroll.innerHTML = SIZES.map((s, i) =>
-      `<button class="size-btn${i===DEFAULTS.sizeIndex?' active':''}" data-index="${i}"><span class="size-label">${s.name}</span><span class="size-dim">${s.label}</span></button>`
-    ).join('');
-  }
-
-  renderQualityButtons() {
-    this.els.qualityGroup.innerHTML = QUALITIES.map((q, i) =>
-      `<button class="quality-btn${i===0?' active':''}" data-scale="${q.scale}"><span class="q-name">${q.name}</span><span class="q-dpi">${q.sub}</span></button>`
-    ).join('');
-  }
-
-  renderColorButtons() {
-    const btns = PRESET_COLORS.map((c, i) =>
-      `<button class="color-btn${c.hex===DEFAULTS.fillColor?' active':''}" data-color="${c.hex}" style="background:${c.hex}" title="${c.name}"></button>`
-    ).join('');
-    this.els.colorGrid.innerHTML = btns + '<button class="color-btn custom-btn" id="customColorBtn" title="自定义颜色">+</button>';
-  }
-
-  bindEvents() {
+    // 上传区域
     this.els.uploadPlaceholder.addEventListener('click', () => this.els.fileInput.click());
     this.els.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
     this.els.uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); this.els.uploadPlaceholder.classList.add('drag-over'); });
@@ -99,92 +62,21 @@ export class App {
       const file = e.dataTransfer.files[0];
       if (file && file.type.startsWith('image/')) this.processFile(file);
     });
-    this.els.reUploadBtn.addEventListener('click', () => this.resetToUpload());
+
+    // 顶栏
     this.els.resetBtn.addEventListener('click', () => this.resetImage());
-
-    this.els.sizeScroll.addEventListener('click', (e) => {
-      const btn = e.target.closest('.size-btn');
-      if (!btn) return;
-      this.els.sizeScroll.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      this.state.selectedSize = SIZES[parseInt(btn.dataset.index)];
-      if (this.state.frameEnabled) this.preloadCurrentFrame();
-      this.scheduleRender();
-    });
-
-    this.els.qualityGroup.addEventListener('click', (e) => {
-      const btn = e.target.closest('.quality-btn');
-      if (!btn) return;
-      this.els.qualityGroup.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      this.state.quality = parseInt(btn.dataset.scale);
-      this.scheduleRender();
-    });
-
-    this.els.tabBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.els.tabBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.els.panelAdjust.classList.toggle('active', btn.dataset.tab === 'adjust');
-        this.els.panelColor.classList.toggle('active', btn.dataset.tab === 'color');
-        this.els.panelFrame.classList.toggle('active', btn.dataset.tab === 'frame');
-      });
-    });
-
-    // 相框开关
-    this.els.frameToggle.addEventListener('change', (e) => {
-      this.state.frameEnabled = e.target.checked;
-      this.updateFrameInfo();
-      if (this.state.frameEnabled) this.preloadCurrentFrame();
-      this.scheduleRender();
-    });
-
-    this.els.zoomSlider.addEventListener('input', () => {
-      const val = parseInt(this.els.zoomSlider.value);
-      this.state.zoom = val;
-      this.els.zoomValue.textContent = val + '%';
-      this.updateAdjustSummary();
-      this.scheduleRender();
-    });
-    this.els.offsetXSlider.addEventListener('input', () => {
-      const val = parseInt(this.els.offsetXSlider.value);
-      this.state.offsetX = val;
-      this.els.offsetXValue.textContent = val + '%';
-      this.scheduleRender();
-    });
-    this.els.offsetYSlider.addEventListener('input', () => {
-      const val = parseInt(this.els.offsetYSlider.value);
-      this.state.offsetY = val;
-      this.els.offsetYValue.textContent = val + '%';
-      this.scheduleRender();
-    });
-
-    const rotateLeft = () => {
-      this.state.rotation = (this.state.rotation - 90 + 360) % 360;
-      this.els.rotateLeftBtn.classList.add('btn-clicked');
-      setTimeout(() => this.els.rotateLeftBtn.classList.remove('btn-clicked'), 200);
-      if (this.state.frameEnabled) this.preloadCurrentFrame();
-      this.scheduleRender();
-    };
-    const rotateRight = () => {
-      this.state.rotation = (this.state.rotation + 90) % 360;
-      this.els.rotateRightBtn.classList.add('btn-clicked');
-      setTimeout(() => this.els.rotateRightBtn.classList.remove('btn-clicked'), 200);
-      if (this.state.frameEnabled) this.preloadCurrentFrame();
-      this.scheduleRender();
-    };
-    this.els.rotateLeftBtn.addEventListener('click', rotateLeft);
-    this.els.rotateRightBtn.addEventListener('click', rotateRight);
-
-    this.els.colorGrid.addEventListener('click', (e) => {
-      const btn = e.target.closest('.color-btn');
-      if (!btn) return;
-      if (btn.id === 'customColorBtn') { this.openColorPicker(); return; }
-      this.setActiveColor(btn.dataset.color);
-    });
-
+    this.els.reUploadBtn.addEventListener('click', () => this.resetToUpload());
     this.els.downloadBtn.addEventListener('click', () => this.handleDownload());
 
+    // 底部工具栏
+    this.els.toolBtns.forEach(btn => {
+      btn.addEventListener('click', () => this.toggleTool(btn.dataset.tool));
+    });
+
+    // 面板关闭
+    this.els.sheetClose.addEventListener('click', () => this.closeSheet());
+
+    // 触摸拖拽
     this.els.canvasWrapper.addEventListener('mousedown', (e) => this.startDrag(e));
     this.els.canvasWrapper.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
     document.addEventListener('mousemove', (e) => this.onDrag(e));
@@ -192,34 +84,207 @@ export class App {
     document.addEventListener('mouseup', () => this.endDrag());
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
     this.els.canvasWrapper.addEventListener('click', (e) => {
-      if (this.state.image && !this.state.isDragging) this.openFullscreenPreview(e);
+      if (this.state.image && !this.state.isDragging && !this.isSheetOpen()) this.openFullscreenPreview(e);
     });
   }
 
-  openColorPicker() {
-    new ColorPicker({
-      initialColor: this.state.fillColor,
-      onConfirm: (color) => this.setActiveColor(color),
+  /** 工具切换 */
+  toggleTool(tool) {
+    if (this.activeTool === tool && this.els.toolSheet.classList.contains('open')) {
+      this.closeSheet();
+      return;
+    }
+    this.activeTool = tool;
+    this.els.toolBtns.forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
+    this.renderSheetContent(tool);
+    this.els.sheetTitle.textContent = this.getToolTitle(tool);
+    requestAnimationFrame(() => this.els.toolSheet.classList.add('open'));
+  }
+
+  closeSheet() {
+    this.els.toolSheet.classList.remove('open');
+    this.els.toolBtns.forEach(b => b.classList.remove('active'));
+    this.activeTool = null;
+  }
+
+  isSheetOpen() {
+    return this.els.toolSheet.classList.contains('open');
+  }
+
+  getToolTitle(tool) {
+    const titles = { size: '选择尺寸', quality: '输出质量', adjust: '调整', color: '填充颜色', frame: '相框效果' };
+    return titles[tool] || tool;
+  }
+
+  /** 渲染面板内容 */
+  renderSheetContent(tool) {
+    const body = this.els.sheetBody;
+    switch (tool) {
+      case 'size': this.renderSizePanel(body); break;
+      case 'quality': this.renderQualityPanel(body); break;
+      case 'adjust': this.renderAdjustPanel(body); break;
+      case 'color': this.renderColorPanel(body); break;
+      case 'frame': this.renderFramePanel(body); break;
+    }
+  }
+
+  renderSizePanel(container) {
+    container.innerHTML = `
+      <div class="size-scroll" id="sheetSizeScroll">
+        ${SIZES.map((s, i) => `
+          <button class="size-btn${i === SIZES.indexOf(this.state.selectedSize) ? ' active' : ''}" data-index="${i}">
+            <span class="size-label">${s.name}</span>
+            <span class="size-dim">${s.label}</span>
+          </button>
+        `).join('')}
+      </div>
+    `;
+    container.querySelector('.size-scroll').addEventListener('click', (e) => {
+      const btn = e.target.closest('.size-btn');
+      if (!btn) return;
+      container.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      this.state.selectedSize = SIZES[parseInt(btn.dataset.index)];
+      if (this.state.frameEnabled) this.preloadCurrentFrame();
+      this.updateInfoBar();
+      this.scheduleRender();
+      // 自动关闭面板
+      setTimeout(() => this.closeSheet(), 200);
+    });
+  }
+
+  renderQualityPanel(container) {
+    container.innerHTML = `
+      <div class="quality-group" id="sheetQualityGroup">
+        ${QUALITIES.map((q) => `
+          <button class="quality-btn${q.scale === this.state.quality ? ' active' : ''}" data-scale="${q.scale}">
+            <span class="q-name">${q.name}</span>
+            <span class="q-dpi">${q.sub}</span>
+          </button>
+        `).join('')}
+      </div>
+    `;
+    container.querySelector('.quality-group').addEventListener('click', (e) => {
+      const btn = e.target.closest('.quality-btn');
+      if (!btn) return;
+      container.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      this.state.quality = parseInt(btn.dataset.scale);
+      this.scheduleRender();
+      setTimeout(() => this.closeSheet(), 200);
+    });
+  }
+
+  renderAdjustPanel(container) {
+    const nr = this.state.rotation % 180 !== 0;
+    container.innerHTML = `
+      <div class="slider-group">
+        <label class="slider-label"><span>缩放</span><span class="slider-value" id="sZoomVal">${this.state.zoom}%</span></label>
+        <input type="range" class="slider" id="sZoomSlider" min="50" max="150" value="${this.state.zoom}" step="1" />
+      </div>
+      <div class="slider-group">
+        <label class="slider-label"><span>水平偏移</span><span class="slider-value" id="sOffsetXVal">${this.state.offsetX}%</span></label>
+        <input type="range" class="slider" id="sOffsetXSlider" min="-100" max="100" value="${this.state.offsetX}" step="1" />
+      </div>
+      <div class="slider-group">
+        <label class="slider-label"><span>垂直偏移</span><span class="slider-value" id="sOffsetYVal">${this.state.offsetY}%</span></label>
+        <input type="range" class="slider" id="sOffsetYSlider" min="-100" max="100" value="${this.state.offsetY}" step="1" />
+      </div>
+      <div class="rotate-group">
+        <button class="rotate-btn" id="sRotateLeft">↺ 左转90°</button>
+        <button class="rotate-btn" id="sRotateRight">↻ 右转90°</button>
+      </div>
+    `;
+
+    const bindSlider = (id, valId, key) => {
+      const slider = container.querySelector(id);
+      const valEl = container.querySelector(valId);
+      slider.addEventListener('input', () => {
+        const v = parseInt(slider.value);
+        this.state[key] = v;
+        valEl.textContent = v + '%';
+        this.updateInfoBar();
+        this.scheduleRender();
+      });
+    };
+    bindSlider('#sZoomSlider', '#sZoomVal', 'zoom');
+    bindSlider('#sOffsetXSlider', '#sOffsetXVal', 'offsetX');
+    bindSlider('#sOffsetYSlider', '#sOffsetYVal', 'offsetY');
+
+    container.querySelector('#sRotateLeft').addEventListener('click', () => {
+      this.state.rotation = (this.state.rotation - 90 + 360) % 360;
+      if (this.state.frameEnabled) this.preloadCurrentFrame();
+      this.updateInfoBar();
+      this.scheduleRender();
+    });
+    container.querySelector('#sRotateRight').addEventListener('click', () => {
+      this.state.rotation = (this.state.rotation + 90) % 360;
+      if (this.state.frameEnabled) this.preloadCurrentFrame();
+      this.updateInfoBar();
+      this.scheduleRender();
+    });
+  }
+
+  renderColorPanel(container) {
+    const btns = PRESET_COLORS.map((c, i) =>
+      `<button class="color-btn${c.hex === this.state.fillColor ? ' active' : ''}" data-color="${c.hex}" style="background:${c.hex}" title="${c.name}"></button>`
+    ).join('');
+    container.innerHTML = `<div class="color-grid">${btns}<button class="color-btn custom" id="sCustomColor">+</button></div>`;
+    container.querySelector('.color-grid').addEventListener('click', (e) => {
+      const btn = e.target.closest('.color-btn');
+      if (!btn) return;
+      if (btn.id === 'sCustomColor') {
+        new ColorPicker({
+          initialColor: this.state.fillColor,
+          onConfirm: (color) => this.setActiveColor(color),
+        });
+        return;
+      }
+      this.setActiveColor(btn.dataset.color);
+    });
+  }
+
+  renderFramePanel(container) {
+    const active = this.state.frameEnabled;
+    const key = this.state.currentFrameKey || '';
+    const parts = key.split('_');
+    const info = key ? `${parts[0]}片 ${parts[1] === 'h' ? '横版' : '竖版'}相框` : '未选择';
+    container.innerHTML = `
+      <div class="frame-toggle-row">
+        <span class="frame-toggle-label">相框效果</span>
+        <label class="switch">
+          <input type="checkbox" id="sFrameToggle" ${active ? 'checked' : ''}>
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+      <div class="frame-info" id="sFrameInfo">${active ? '当前：' + info : '开启后预览将叠加装饰相框'}</div>
+    `;
+    container.querySelector('#sFrameToggle').addEventListener('change', (e) => {
+      this.state.frameEnabled = e.target.checked;
+      if (this.state.frameEnabled) this.preloadCurrentFrame();
+      this.updateInfoBar();
+      this.scheduleRender();
     });
   }
 
   setActiveColor(color) {
     this.state.fillColor = color;
-    this.els.colorGrid.querySelectorAll('.color-btn:not(.custom-btn)').forEach(b => {
+    const body = this.els.sheetBody;
+    body.querySelectorAll('.color-btn:not(.custom)').forEach(b => {
       b.classList.toggle('active', b.dataset.color.toLowerCase() === color.toLowerCase());
     });
     this.scheduleRender();
   }
 
+  // ===================== 拖拽 =====================
   startDrag(e) {
     if (!this.state.image) return;
     const pt = e.touches ? e.touches[0] : e;
     if (!this.isTouchOnImage(pt)) return;
     this.state.isDragging = true;
     this.els.canvasWrapper.classList.add('dragging');
-    const pos = { x: pt.clientX, y: pt.clientY };
-    this.state.dragStartX = pos.x;
-    this.state.dragStartY = pos.y;
+    this.state.dragStartX = pt.clientX;
+    this.state.dragStartY = pt.clientY;
     this.state.dragStartOffsetX = this.state.offsetX;
     this.state.dragStartOffsetY = this.state.offsetY;
   }
@@ -239,18 +304,25 @@ export class App {
     const zf = this.state.zoom / 100;
     iw *= zf; ih *= zf;
     const mw = (iw - pw) / 2, mh = (ih - ph) / 2;
-    const px = mw > 0 ? (dx / mw) * 100 : 0, py = mh > 0 ? (dy / mh) * 100 : 0;
-    this.state.offsetX = Math.round(Math.max(-100, Math.min(100, this.state.dragStartOffsetX + px)));
-    this.state.offsetY = Math.round(Math.max(-100, Math.min(100, this.state.dragStartOffsetY + py)));
-    this.els.offsetXSlider.value = this.state.offsetX;
-    this.els.offsetYSlider.value = this.state.offsetY;
-    this.els.offsetXValue.textContent = this.state.offsetX + '%';
-    this.els.offsetYValue.textContent = this.state.offsetY + '%';
+    this.state.offsetX = Math.round(Math.max(-100, Math.min(100, this.state.dragStartOffsetX + (mw > 0 ? (dx / mw) * 100 : 0))));
+    this.state.offsetY = Math.round(Math.max(-100, Math.min(100, this.state.dragStartOffsetY + (mh > 0 ? (dy / mh) * 100 : 0))));
+    // 更新sheet内的滑块（如果打开）
+    if (this.activeTool === 'adjust') {
+      const sOffX = this.els.sheetBody.querySelector('#sOffsetXSlider');
+      const sOffY = this.els.sheetBody.querySelector('#sOffsetYSlider');
+      const vOffX = this.els.sheetBody.querySelector('#sOffsetXVal');
+      const vOffY = this.els.sheetBody.querySelector('#sOffsetYVal');
+      if (sOffX) { sOffX.value = this.state.offsetX; vOffX.textContent = this.state.offsetX + '%'; }
+      if (sOffY) { sOffY.value = this.state.offsetY; vOffY.textContent = this.state.offsetY + '%'; }
+    }
     this.scheduleRender();
   }
 
   endDrag() {
-    if (this.state.isDragging) { this.state.isDragging = false; this.els.canvasWrapper.classList.remove('dragging'); }
+    if (this.state.isDragging) {
+      this.state.isDragging = false;
+      this.els.canvasWrapper.classList.remove('dragging');
+    }
   }
 
   getTouchDistance(e) {
@@ -282,6 +354,7 @@ export class App {
     return cx >= ddx && cx <= ddx + iw && cy >= ddy && cy <= ddy + ih;
   }
 
+  // ===================== 触摸 =====================
   handleTouchStart(e) {
     if (e.touches.length >= 2) {
       if (!this.isTouchOnImage(e.touches[0]) || !this.isTouchOnImage(e.touches[1])) return;
@@ -307,9 +380,12 @@ export class App {
       const nz = Math.round(this.state.pinchStartZoom * (1 + sd / this.state.pinchStartDist));
       const clamped = Math.max(50, Math.min(150, nz));
       this.state.zoom = clamped;
-      this.els.zoomSlider.value = clamped;
-      this.els.zoomValue.textContent = clamped + '%';
-      this.updateAdjustSummary();
+      if (this.activeTool === 'adjust') {
+        const sZoom = this.els.sheetBody.querySelector('#sZoomSlider');
+        const vZoom = this.els.sheetBody.querySelector('#sZoomVal');
+        if (sZoom) { sZoom.value = clamped; vZoom.textContent = clamped + '%'; }
+      }
+      this.updateInfoBar();
       this.scheduleRender();
     } else if (!this.state.isPinching) {
       if (e.touches.length === 1) {
@@ -324,10 +400,142 @@ export class App {
   handleTouchEnd(e) {
     if (this.state.isPinching) { this.state.isPinching = false; this.endDrag(); return; }
     const elapsed = Date.now() - this.state.touchStartTime;
-    if (!this.state.touchMoved && elapsed < 300 && this.state.image) this.openFullscreenPreview(e);
+    if (!this.state.touchMoved && elapsed < 300 && this.state.image && !this.isSheetOpen()) this.openFullscreenPreview(e);
     this.endDrag();
   }
 
+  // ===================== 文件处理 =====================
+  handleFileSelect(e) { const file = e.target.files[0]; if (file) this.processFile(file); }
+
+  async processFile(file) {
+    try {
+      this.showLoading();
+      const img = await loadImage(file);
+      this.state.image = img;
+      this.state.originalFile = file;
+      this.state.zoom = DEFAULTS.zoom;
+      this.state.offsetX = DEFAULTS.offsetX;
+      this.state.offsetY = DEFAULTS.offsetY;
+      this.state.rotation = DEFAULTS.rotation;
+      this.state.fillColor = DEFAULTS.fillColor;
+      this.state.puzzleCanvas = null;
+      this.state.frameEnabled = false;
+      this.setActiveColor(DEFAULTS.fillColor);
+
+      this.els.uploadArea.style.display = 'none';
+      this.els.editorArea.style.display = 'flex';
+      this.updateInfoBar();
+      this.hideLoading();
+      this.renderPreview();
+      this.preloadCurrentFrame();
+    } catch (err) {
+      this.hideLoading();
+      this.showToast('图片加载失败，请重试');
+      console.error('图片加载失败:', err);
+    }
+  }
+
+  resetToUpload() {
+    this.state.image = null;
+    this.state.originalFile = null;
+    this.state.puzzleCanvas = null;
+    this.state.frameEnabled = false;
+    this.state.frameImages = {};
+    this.state.currentFrameKey = null;
+    this.closeSheet();
+    this.els.uploadArea.style.display = 'flex';
+    this.els.editorArea.style.display = 'none';
+    this.els.fileInput.value = '';
+  }
+
+  resetImage() {
+    if (!this.state.image) return;
+    this.state.zoom = DEFAULTS.zoom;
+    this.state.offsetX = DEFAULTS.offsetX;
+    this.state.offsetY = DEFAULTS.offsetY;
+    this.state.rotation = DEFAULTS.rotation;
+    this.state.puzzleCanvas = null;
+    this.updateInfoBar();
+    this.scheduleRender();
+    this.showToast('已重置');
+  }
+
+  // ===================== 预览渲染 =====================
+  scheduleRender() {
+    if (this.renderTimer) cancelAnimationFrame(this.renderTimer);
+    this.els.previewCanvas.classList.add('updating');
+    this.renderTimer = requestAnimationFrame(() => this.renderPreview());
+  }
+
+  renderPreview() {
+    if (!this.state.image) return;
+    const size = this.state.selectedSize;
+    const nr = this.state.rotation % 180 !== 0;
+    const cmW = nr ? size.heightCm : size.widthCm;
+    const cmH = nr ? size.widthCm : size.heightCm;
+
+    // 计算预览尺寸：基于可用空间
+    const wrapper = this.els.canvasWrapper;
+    const wrapperW = wrapper.clientWidth;
+    const wrapperH = wrapper.clientHeight;
+    // 目标比例
+    const aspect = cmW / cmH;
+    let pvw, pvh;
+    if (wrapperW / wrapperH > aspect) {
+      pvh = Math.round(wrapperH * 0.92);
+      pvw = Math.round(pvh * aspect);
+    } else {
+      pvw = Math.round(wrapperW * 0.92);
+      pvh = Math.round(pvw / aspect);
+    }
+    // 限制最大尺寸（性能）
+    const MAX_PREV = 800;
+    if (pvw > MAX_PREV) { pvw = MAX_PREV; pvh = Math.round(pvw / aspect); }
+    if (pvh > MAX_PREV) { pvh = MAX_PREV; pvw = Math.round(pvh * aspect); }
+
+    // Step 1: PuzzleCanvas
+    const pc = this.state.puzzleCanvas || (this.state.puzzleCanvas = document.createElement('canvas'));
+    pc.width = pvw;
+    pc.height = pvh;
+    renderImage(pc.getContext('2d'), this.state.image, pvw, pvh, {
+      zoom: this.state.zoom, offsetX: this.state.offsetX, offsetY: this.state.offsetY,
+      rotation: this.state.rotation, fillColor: this.state.fillColor,
+    });
+
+    // Step 2: 显示
+    if (this.state.frameEnabled) {
+      this.renderFramePreview(pc);
+    } else {
+      this.renderNormalPreview(pc);
+    }
+    this.els.previewCanvas.classList.remove('updating');
+  }
+
+  renderNormalPreview(pc) {
+    const canvas = this.els.previewCanvas;
+    const ctx = canvas.getContext('2d');
+    canvas.style.width = '';
+    canvas.style.height = '';
+    canvas.width = pc.width;
+    canvas.height = pc.height;
+    ctx.drawImage(pc, 0, 0);
+  }
+
+  renderFramePreview(pc) {
+    const frameKey = this.state.currentFrameKey;
+    const frameImg = this.state.frameImages[frameKey];
+    if (!frameImg || !frameKey) {
+      this.renderNormalPreview(pc);
+      return;
+    }
+    const ds = getFrameDisplaySize(frameKey, 260);
+    const canvas = this.els.previewCanvas;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    renderFrame(ctx, pc, frameKey, frameImg, ds.width, ds.height);
+  }
+
+  // ===================== 全屏预览 =====================
   openFullscreenPreview() {
     if (!this.state.image) return;
     const s = this.state.selectedSize;
@@ -337,7 +545,6 @@ export class App {
     let pvw = 480, pvh = Math.round(pvw / ta);
     if (pvh > 680) { pvh = 680; pvw = Math.round(pvh * ta); }
 
-    // 生成全屏 PuzzleCanvas（同组参数，始终调用一次 renderImage）
     const puzzleCanvas = document.createElement('canvas');
     const pcCtx = puzzleCanvas.getContext('2d');
     renderImage(pcCtx, this.state.image, pvw, pvh, {
@@ -345,7 +552,6 @@ export class App {
       rotation: this.state.rotation, fillColor: this.state.fillColor,
     });
 
-    // 计算最终显示用的画布和dataUrl
     let displayCanvas = puzzleCanvas;
     if (this.state.frameEnabled) {
       const frameKey = this.state.currentFrameKey;
@@ -365,193 +571,29 @@ export class App {
 
     const img = document.createElement('img');
     img.src = dataUrl;
-    img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;transition:transform 0.15s ease;';
-    img.style.transform = 'scale(1)';
+    img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;';
 
     const closeBtn = document.createElement('button');
-    closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'position:fixed;top:16px;right:16px;width:38px;height:38px;border:none;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;-webkit-tap-highlight-color:transparent;';
+    closeBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    closeBtn.style.cssText = 'position:fixed;top:20px;right:20px;width:40px;height:40px;border:none;border-radius:50%;background:rgba(255,255,255,0.08);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;-webkit-tap-highlight-color:transparent;';
     closeBtn.onclick = () => document.body.removeChild(overlay);
 
-    const fsHint = document.createElement('div');
-    fsHint.textContent = '👉👈 双指缩放查看细节';
-    fsHint.style.cssText = 'position:fixed;bottom:40px;left:50%;transform:translateX(-50%);z-index:2;background:rgba(0,0,0,0.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:rgba(255,255,255,0.6);font-size:13px;padding:5px 14px;border-radius:16px;border:1px solid rgba(255,255,255,0.05);pointer-events:none;transition:opacity 1s ease;';
-    setTimeout(() => { fsHint.style.opacity = '0'; }, 3000);
-
-    let fsDist = 0, fsScale = 1;
-    overlay.addEventListener('touchstart', (e) => {
-      if (e.touches.length >= 2) {
-        e.preventDefault();
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        fsDist = Math.sqrt(dx*dx + dy*dy);
-        fsScale = parseFloat(img.style.transform.replace('scale(','').replace(')','')) || 1;
-      }
-    }, { passive: false });
-    overlay.addEventListener('touchmove', (e) => {
-      if (e.touches.length >= 2) {
-        e.preventDefault();
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const d = Math.sqrt(dx*dx + dy*dy);
-        let s = fsScale * (1 + (d / fsDist - 1) * 0.4);
-        s = Math.max(0.5, Math.min(5, s));
-        img.style.transform = `scale(${s})`;
-      }
-    }, { passive: false });
-
     overlay.appendChild(img);
-    overlay.appendChild(fsHint);
     overlay.appendChild(closeBtn);
     document.body.appendChild(overlay);
   }
 
-  handleFileSelect(e) { const file = e.target.files[0]; if (file) this.processFile(file); }
-
-  async processFile(file) {
-    try {
-      this.showLoading();
-      const img = await loadImage(file);
-      this.state.image = img;
-      this.state.originalFile = file;
-      this.state.zoom = DEFAULTS.zoom;
-      this.state.offsetX = DEFAULTS.offsetX;
-      this.state.offsetY = DEFAULTS.offsetY;
-      this.state.rotation = DEFAULTS.rotation;
-      this.state.fillColor = DEFAULTS.fillColor;
-      this.els.zoomSlider.value = DEFAULTS.zoom;
-      this.els.zoomValue.textContent = DEFAULTS.zoom + '%';
-      this.els.offsetXSlider.value = DEFAULTS.offsetX;
-      this.els.offsetXValue.textContent = DEFAULTS.offsetX + '%';
-      this.els.offsetYSlider.value = DEFAULTS.offsetY;
-      this.els.offsetYValue.textContent = DEFAULTS.offsetY + '%';
-      this.updateAdjustSummary();
-      this.setActiveColor(DEFAULTS.fillColor);
-      this.els.uploadPlaceholder.style.display = 'none';
-      this.els.previewContainer.style.display = 'flex';
-      this.els.controlsSection.style.display = 'flex';
-      const cards = this.els.controlsSection.querySelectorAll('.card');
-      cards.forEach((card, i) => {
-        card.classList.remove('anim-fade-in-up');
-        void card.offsetWidth;
-        card.classList.add('anim-fade-in-up');
-        card.style.setProperty('--anim-delay', `${(i + 1) * 0.12}s`);
-      });
-      this.hideLoading();
-      this.renderPreview();
-      this.preloadCurrentFrame();
-    } catch (err) {
-      this.hideLoading();
-      this.showToast('图片加载失败，请重试');
-      console.error('图片加载失败:', err);
-    }
-  }
-
-  resetToUpload() {
-    this.state.image = null;
-    this.state.originalFile = null;
-    this.state.puzzleCanvas = null;
-    this.state.frameEnabled = false;
-    this.state.frameImages = {};
-    this.state.currentFrameKey = null;
-    this.els.uploadPlaceholder.style.display = 'flex';
-    this.els.previewContainer.style.display = 'none';
-    this.els.controlsSection.style.display = 'none';
-    this.els.fileInput.value = '';
-    this.els.frameToggle.checked = false;
-    this.els.controlsSection.querySelectorAll('.card').forEach(c => c.classList.remove('anim-fade-in-up'));
-  }
-
-  resetImage() {
-    if (!this.state.image) return;
-    this.state.zoom = DEFAULTS.zoom;
-    this.state.offsetX = DEFAULTS.offsetX;
-    this.state.offsetY = DEFAULTS.offsetY;
-    this.state.rotation = DEFAULTS.rotation;
-    this.state.puzzleCanvas = null;
-    this.els.zoomSlider.value = DEFAULTS.zoom;
-    this.els.zoomValue.textContent = DEFAULTS.zoom + '%';
-    this.els.offsetXSlider.value = DEFAULTS.offsetX;
-    this.els.offsetXValue.textContent = DEFAULTS.offsetX + '%';
-    this.els.offsetYSlider.value = DEFAULTS.offsetY;
-    this.els.offsetYValue.textContent = DEFAULTS.offsetY + '%';
-    this.updateAdjustSummary();
-    this.scheduleRender();
-    this.showToast('已重置');
-  }
-
-  scheduleRender() {
-    if (this.renderTimer) cancelAnimationFrame(this.renderTimer);
-    this.els.canvasWrapper.classList.add('updating');
-    this.renderTimer = requestAnimationFrame(() => this.renderPreview());
-  }
-
-  renderPreview() {
-    if (!this.state.image) return;
-    const size = this.state.selectedSize;
-    const nr = this.state.rotation % 180 !== 0;
-    const cmW = nr ? size.heightCm : size.widthCm, cmH = nr ? size.widthCm : size.heightCm;
-    const ps = getPreviewSize(cmW, cmH, 200);
-
-    // Step 1: 生成PuzzleCanvas（唯一一次renderImage调用）
-    const pc = this.state.puzzleCanvas || (this.state.puzzleCanvas = document.createElement('canvas'));
-    pc.width = ps.width;
-    pc.height = ps.height;
-    renderImage(pc.getContext('2d'), this.state.image, ps.width, ps.height, {
-      zoom: this.state.zoom, offsetX: this.state.offsetX, offsetY: this.state.offsetY,
-      rotation: this.state.rotation, fillColor: this.state.fillColor,
-    });
-
-    // Step 2: 显示（带相框或不带）
-    if (this.state.frameEnabled) {
-      this.renderFramePreview(pc);
-    } else {
-      this.renderNormalPreview(pc);
-    }
-    this.els.canvasWrapper.classList.remove('updating');
-  }
-
-  renderNormalPreview(pc) {
-    const canvas = this.els.previewCanvas;
-    // 清除可能残留的相框模式内联样式
-    canvas.style.width = '';
-    canvas.style.height = '';
-    const ctx = canvas.getContext('2d');
-    canvas.width = pc.width;
-    canvas.height = pc.height;
-    this.els.canvasWrapper.style.height = pc.height + 'px';
-    ctx.drawImage(pc, 0, 0);
-  }
-
-  renderFramePreview(pc) {
-    const frameKey = this.state.currentFrameKey;
-    const frameImg = this.state.frameImages[frameKey];
-    if (!frameImg || !frameKey) {
-      this.renderNormalPreview(pc);
-      return;
-    }
-    const ds = getFrameDisplaySize(frameKey, 200);
-    const canvas = this.els.previewCanvas;
-    const ctx = canvas.getContext('2d');
-    // 清除之前的transform
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    renderFrame(ctx, pc, frameKey, frameImg, ds.width, ds.height);
-    this.els.canvasWrapper.style.height = ds.height + 'px';
-  }
-
+  // ===================== 下载 =====================
   async handleDownload() {
     if (!this.state.image) return;
     try {
       this.els.downloadBtn.disabled = true;
-      this.els.downloadBtn.textContent = '处理中...';
+      this.els.downloadBtn.innerHTML = '<span style="font-size:14px">...</span>';
       const size = this.state.selectedSize;
-      const mode = this.state.quality; // 0=原图(1x), 2=高清(2x)
-
+      const mode = this.state.quality;
       const nr = this.state.rotation % 180 !== 0;
       const cmW = nr ? size.heightCm : size.widthCm, cmH = nr ? size.widthCm : size.heightCm;
       const targetAspect = cmW / cmH;
-
-      // 基于图片原始分辨率计算输出尺寸
       const imgW = this.state.image.naturalWidth;
       const imgH = this.state.image.naturalHeight;
       let pxW, pxH;
@@ -562,20 +604,15 @@ export class App {
         pxH = Math.round(imgH);
         pxW = Math.round(imgH * targetAspect);
       }
-
-      // 高清模式: 2倍分辨率
       const multiplier = mode > 0 ? mode : 1;
       pxW = Math.round(pxW * multiplier);
       pxH = Math.round(pxH * multiplier);
-
-      // 安全上限
       const MAX = 4096;
       if (pxW > MAX || pxH > MAX) {
         const ratio = Math.min(MAX / pxW, MAX / pxH);
         pxW = Math.round(pxW * ratio);
         pxH = Math.round(pxH * ratio);
       }
-
       const offscreen = document.createElement('canvas');
       const ctx = offscreen.getContext('2d');
       renderImage(ctx, this.state.image, pxW, pxH, {
@@ -591,23 +628,34 @@ export class App {
       console.error('下载失败:', err);
     } finally {
       this.els.downloadBtn.disabled = false;
-      this.els.downloadBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 下载图片';
+      this.els.downloadBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
     }
   }
 
-  updateAdjustSummary() { this.els.adjustSummaryText.textContent = `缩放 ${this.state.zoom}% · 位置微调`; }
+  // ===================== 信息栏 =====================
+  updateInfoBar() {
+    const size = this.state.selectedSize;
+    const nr = this.state.rotation % 180 !== 0;
+    const cmW = nr ? size.heightCm : size.widthCm;
+    const cmH = nr ? size.widthCm : size.heightCm;
+    const frameText = this.state.frameEnabled ? ' · 相框开' : '';
+    this.els.infoText.textContent = `${size.name} · ${cmW}×${cmH}cm · 缩放${this.state.zoom}%${frameText}`;
+  }
 
+  // ===================== 相框 =====================
   updateFrameInfo() {
     const key = this.state.currentFrameKey;
     const on = this.state.frameEnabled;
+    const infoEl = this.els.sheetBody.querySelector('#sFrameInfo');
+    if (!infoEl) return;
     if (!on) {
-      this.els.frameInfo.textContent = '当前：未开启相框效果';
+      infoEl.textContent = '开启后预览将叠加装饰相框';
       return;
     }
     const parts = (key || '').split('_');
     const size = parts[0] || '';
     const orient = parts[1] === 'h' ? '横版' : parts[1] === 'v' ? '竖版' : '';
-    this.els.frameInfo.textContent = `当前：${size}片 ${orient}相框`;
+    infoEl.textContent = `当前：${size}片 ${orient}相框`;
   }
 
   async preloadCurrentFrame() {
@@ -631,6 +679,7 @@ export class App {
     }
   }
 
+  // ===================== 工具UI =====================
   showLoading() {
     this.hideLoading();
     const overlay = document.createElement('div');
@@ -640,7 +689,7 @@ export class App {
     this.els.uploadArea.appendChild(overlay);
   }
 
-  hideLoading() { const existing = document.getElementById('loadingOverlay'); if (existing) existing.remove(); }
+  hideLoading() { const el = document.getElementById('loadingOverlay'); if (el) el.remove(); }
 
   showToast(msg) {
     const existing = document.querySelector('.toast');
