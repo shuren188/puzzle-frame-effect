@@ -1,4 +1,4 @@
-import { SIZES, QUALITIES, PRESET_COLORS, DEFAULTS, DRAG_SENSITIVITY, ZOOM_RANGE } from '../constants.js';
+import { SIZES, QUALITIES, PRESET_COLORS, DEFAULTS, ZOOM_RANGE } from '../constants.js';
 import { renderImage, loadImage } from '../utils/imageProcessor.js';
 import { downloadImage, getOutputFilename } from '../utils/download.js';
 import { ColorPicker } from './ColorPicker.js';
@@ -9,7 +9,7 @@ const PINCH_SENSITIVITY = 0.45;
 export class App {
   constructor() {
     this.els = {};
-    this.activeTool = 'size'; // 默认展开尺寸
+    this.activeTool = 'size';
     this.state = {
       image: null, originalFile: null,
       selectedSize: SIZES[DEFAULTS.sizeIndex],
@@ -40,6 +40,7 @@ export class App {
     this.els.canvasWrapper = $('canvasWrapper');
     this.els.previewCanvas = $('previewCanvas');
     this.els.dragHint = $('dragHint');
+    this.els.frameToggle = $('frameToggle');
     this.els.toolBar = $('toolBar');
     this.els.toolBtns = this.els.toolBar.querySelectorAll('.tool-btn');
     this.els.toolContentInner = $('toolContentInner');
@@ -62,7 +63,15 @@ export class App {
     this.els.reUploadBtn.addEventListener('click', () => this.resetToUpload());
     this.els.downloadBtn.addEventListener('click', () => this.handleDownload());
 
-    // 底部工具栏——点击切换工具（默认展开）
+    // 相框开关（预览区右上角）
+    this.els.frameToggle.addEventListener('change', (e) => {
+      this.state.frameEnabled = e.target.checked;
+      if (this.state.frameEnabled) this.preloadCurrentFrame();
+      this.updateInfoBar();
+      this.scheduleRender();
+    });
+
+    // 底部工具栏按钮
     this.els.toolBtns.forEach(btn => {
       btn.addEventListener('click', () => this.switchTool(btn.dataset.tool));
     });
@@ -75,14 +84,14 @@ export class App {
     document.addEventListener('mouseup', () => this.endDrag());
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
     this.els.canvasWrapper.addEventListener('click', (e) => {
-      if (this.state.image && !this.state.isDragging) this.openFullscreenPreview(e);
+      if (this.state.image && !this.state.isDragging && !e.target.closest('.frame-switch')) this.openFullscreenPreview(e);
     });
 
-    // 默认渲染尺寸面板
+    // 默认展开尺寸
     this.renderToolContent('size');
   }
 
-  // ===================== 工具切换（带动画） =====================
+  // ===================== 工具切换 =====================
   switchTool(tool) {
     if (tool === this.activeTool) return;
     this.activeTool = tool;
@@ -98,7 +107,6 @@ export class App {
 
   renderToolContent(tool) {
     const inner = this.els.toolContentInner;
-    // 淡出
     inner.style.opacity = '0';
     inner.style.transform = 'translateY(6px)';
     setTimeout(() => {
@@ -107,18 +115,15 @@ export class App {
         case 'quality': this.renderQualityPanel(inner); break;
         case 'adjust': this.renderAdjustPanel(inner); break;
         case 'color': this.renderColorPanel(inner); break;
-        case 'frame': this.renderFramePanel(inner); break;
       }
-      // 淡入
       requestAnimationFrame(() => {
-        inner.style.transition = 'opacity .25s cubic-bezier(.22,1,.36,1), transform .25s cubic-bezier(.22,1,.36,1)';
+        inner.style.transition = 'opacity .25s, transform .25s';
         inner.style.opacity = '1';
         inner.style.transform = 'translateY(0)';
       });
-    }, 150);
+    }, 120);
   }
 
-  // ===================== 各面板渲染 =====================
   renderSizePanel(container) {
     container.innerHTML = `
       <div class="size-scroll">
@@ -217,30 +222,6 @@ export class App {
     });
   }
 
-  renderFramePanel(container) {
-    const key = this.state.currentFrameKey || '';
-    const parts = key.split('_');
-    const info = this.state.frameEnabled && key
-      ? `当前：${parts[0]}片 ${parts[1] === 'h' ? '横版' : '竖版'}相框`
-      : '开启后预览将叠加装饰相框';
-    container.innerHTML = `
-      <div class="frame-toggle-row">
-        <span class="frame-toggle-label">相框效果</span>
-        <label class="switch">
-          <input type="checkbox" id="sFrameToggle" ${this.state.frameEnabled ? 'checked' : ''}>
-          <span class="switch-slider"></span>
-        </label>
-      </div>
-      <div class="frame-info" id="sFrameInfo">${info}</div>
-    `;
-    container.querySelector('#sFrameToggle').addEventListener('change', (e) => {
-      this.state.frameEnabled = e.target.checked;
-      if (this.state.frameEnabled) this.preloadCurrentFrame();
-      this.updateInfoBar();
-      this.scheduleRender();
-    });
-  }
-
   setActiveColor(color) {
     this.state.fillColor = color;
     this.els.toolContentInner.querySelectorAll('.color-btn:not(.custom)').forEach(b => {
@@ -249,7 +230,7 @@ export class App {
     this.scheduleRender();
   }
 
-  // ===================== 触摸/拖拽 =====================
+  // ===================== 触摸 =====================
   startDrag(e) {
     if (!this.state.image) return;
     const pt = e.touches ? e.touches[0] : e;
@@ -279,7 +260,6 @@ export class App {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
-  // ===================== 触摸手势 =====================
   handleTouchStart(e) {
     if (e.touches.length >= 2) {
       e.preventDefault();
@@ -300,8 +280,7 @@ export class App {
     if (this.state.isPinching && e.touches.length >= 2) {
       e.preventDefault();
       const dist = this.getTouchDistance(e);
-      const sd = (dist - this.state.pinchStartDist) * PINCH_SENSITIVITY;
-      const nz = Math.round(this.state.pinchStartZoom * (1 + sd / this.state.pinchStartDist));
+      const nz = Math.round(this.state.pinchStartZoom * (1 + ((dist - this.state.pinchStartDist) * PINCH_SENSITIVITY) / this.state.pinchStartDist));
       const clamped = Math.max(ZOOM_RANGE.min, Math.min(ZOOM_RANGE.max, nz));
       this.state.zoom = clamped;
       if (this.activeTool === 'adjust') {
@@ -311,12 +290,10 @@ export class App {
       }
       this.updateInfoBar();
       this.scheduleRender();
-    } else if (!this.state.isPinching) {
-      if (e.touches.length === 1) {
-        const dx = Math.abs(e.touches[0].clientX - this.state.dragStartX);
-        const dy = Math.abs(e.touches[0].clientY - this.state.dragStartY);
-        if (dx > 5 || dy > 5) this.state.touchMoved = true;
-      }
+    } else if (!this.state.isPinching && e.touches.length === 1) {
+      const dx = Math.abs(e.touches[0].clientX - this.state.dragStartX);
+      const dy = Math.abs(e.touches[0].clientY - this.state.dragStartY);
+      if (dx > 5 || dy > 5) this.state.touchMoved = true;
       this.onDrag(e);
     }
   }
@@ -346,7 +323,7 @@ export class App {
 
       this.els.uploadArea.style.display = 'none';
       this.els.editorArea.style.display = 'flex';
-      // 默认展开尺寸面板
+      this.els.frameToggle.checked = false;
       this.activeTool = 'size';
       this.els.toolBtns.forEach(b => b.classList.toggle('active', b.dataset.tool === 'size'));
       this.renderToolContent('size');
@@ -402,10 +379,10 @@ export class App {
     const aspect = cmW / cmH;
     let pvw, pvh;
     if (wrapperW / wrapperH > aspect) {
-      pvh = Math.round(wrapperH * 0.94);
+      pvh = Math.round(wrapperH * 0.95);
       pvw = Math.round(pvh * aspect);
     } else {
-      pvw = Math.round(wrapperW * 0.94);
+      pvw = Math.round(wrapperW * 0.95);
       pvh = Math.round(pvw / aspect);
     }
     const MAX_PREV = 1000;
@@ -421,7 +398,7 @@ export class App {
     });
 
     if (this.state.frameEnabled) {
-      this.renderFramePreview(pc);
+      this.renderFramePreview(pc, wrapperW, wrapperH);
     } else {
       this.renderNormalPreview(pc);
     }
@@ -438,11 +415,27 @@ export class App {
     ctx.drawImage(pc, 0, 0);
   }
 
-  renderFramePreview(pc) {
+  renderFramePreview(pc, wrapW, wrapH) {
     const frameKey = this.state.currentFrameKey;
     const frameImg = this.state.frameImages[frameKey];
     if (!frameImg || !frameKey) { this.renderNormalPreview(pc); return; }
-    const ds = getFrameDisplaySize(frameKey, 280);
+
+    // 根据预览区实际可用空间计算相框显示尺寸（占满预览框）
+    const config = this.els.toolContentInner.offsetParent ?
+      { w: wrapW, h: wrapH } :
+      { w: this.els.canvasWrapper.clientWidth, h: this.els.canvasWrapper.clientHeight };
+
+    // 使用预览区高度的 95% 作为基准
+    const targetH = Math.round(wrapH * 0.95);
+    const ds = getFrameDisplaySize(frameKey, targetH);
+
+    // 确保不超过预览区宽度
+    if (ds.width > wrapW * 0.95) {
+      const ratio = (wrapW * 0.95) / ds.width;
+      ds.width = Math.round(ds.width * ratio);
+      ds.height = Math.round(ds.height * ratio);
+    }
+
     const canvas = this.els.previewCanvas;
     const ctx = canvas.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -480,17 +473,14 @@ export class App {
     const dataUrl = displayCanvas.toDataURL('image/png');
 
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(6,8,18,0.95);display:flex;align-items:center;justify-content:center;z-index:99998;padding:16px;backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);touch-action:none;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(6,8,18,0.95);display:flex;align-items:center;justify-content:center;z-index:99998;padding:16px;backdrop-filter:blur(30px);touch-action:none;';
     overlay.onclick = (e) => { if (e.target === overlay) document.body.removeChild(overlay); };
-
     const img = document.createElement('img');
     img.src = dataUrl;
     img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;';
-
     const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    closeBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     closeBtn.style.cssText = 'position:fixed;top:20px;right:20px;width:40px;height:40px;border:none;border-radius:50%;background:rgba(255,255,255,0.05);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;';
-
     overlay.appendChild(img);
     overlay.appendChild(closeBtn);
     document.body.appendChild(overlay);
@@ -506,23 +496,21 @@ export class App {
       const mode = this.state.quality;
       const nr = this.state.rotation % 180 !== 0;
       const cmW = nr ? size.heightCm : size.widthCm, cmH = nr ? size.widthCm : size.heightCm;
-      const targetAspect = cmW / cmH;
+      const aspect = cmW / cmH;
       const imgW = this.state.image.naturalWidth;
       const imgH = this.state.image.naturalHeight;
       let pxW, pxH;
-      if (imgW / imgH > targetAspect) {
-        pxW = Math.round(imgW); pxH = Math.round(imgW / targetAspect);
+      if (imgW / imgH > aspect) {
+        pxW = Math.round(imgW); pxH = Math.round(imgW / aspect);
       } else {
-        pxH = Math.round(imgH); pxW = Math.round(imgH * targetAspect);
+        pxH = Math.round(imgH); pxW = Math.round(imgH * aspect);
       }
-      const multiplier = mode > 0 ? mode : 1;
-      pxW = Math.round(pxW * multiplier);
-      pxH = Math.round(pxH * multiplier);
+      const mul = mode > 0 ? mode : 1;
+      pxW = Math.round(pxW * mul); pxH = Math.round(pxH * mul);
       const MAX = 4096;
       if (pxW > MAX || pxH > MAX) {
         const ratio = Math.min(MAX / pxW, MAX / pxH);
-        pxW = Math.round(pxW * ratio);
-        pxH = Math.round(pxH * ratio);
+        pxW = Math.round(pxW * ratio); pxH = Math.round(pxH * ratio);
       }
       const offscreen = document.createElement('canvas');
       const ctx = offscreen.getContext('2d');
@@ -568,17 +556,12 @@ export class App {
         const img = await loadFrameImage(frameKey);
         this.state.frameImages[frameKey] = img;
       }
-      const infoEl = document.getElementById('sFrameInfo');
-      if (infoEl) {
-        const sizeNum = frameKey.split('_')[0];
-        infoEl.textContent = `当前：${sizeNum}片 ${isLandscape ? '横版' : '竖版'}相框`;
-      }
     } catch (e) {
       console.warn('相框预加载失败:', e);
     }
   }
 
-  // ===================== UI 工具 =====================
+  // ===================== UI =====================
   showLoading() {
     this.hideLoading();
     const overlay = document.createElement('div');
