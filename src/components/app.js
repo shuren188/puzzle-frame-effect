@@ -5,6 +5,7 @@ import { ColorPicker } from './ColorPicker.js';
 import { renderFrame, loadFrameImage, getFrameKey, getFrameDisplaySize, FRAME_CONFIG } from '../utils/frameProcessor.js';
 
 const PINCH_SENSITIVITY = 0.45;
+const SIZE_KEYS = ['35', '70', '120', '200', '300'];
 
 export class App {
   constructor() {
@@ -17,11 +18,16 @@ export class App {
       fillColor: DEFAULTS.fillColor,
       zoom: DEFAULTS.zoom,
       rotation: DEFAULTS.rotation,
-      isDragging: false, dragStartX: 0, dragStartY: 0,
-      isPinching: false, pinchStartDist: 0, pinchStartZoom: 100,
-      touchStartTime: 0, touchMoved: false,
-      frameEnabled: false, frameImages: {}, currentFrameKey: null, puzzleCanvas: null,
+      frameEnabled: false, currentFrameKey: null,
     };
+    // 分层Canvas:
+    //   puzzleCanvas (offscreen) — 拼图结果，缓存，仅在参数变更时重建
+    //   previewCanvas (onscreen) — 显示拼图
+    //   frameCanvas (onscreen overlay) — 相框叠加层，开关仅操作此层
+    this.puzzleCanvas = document.createElement('canvas');
+    this.frameImgCache = {};  // 全局相框图片缓存
+    this._frameDims = null;   // 当前相框显示尺寸缓存
+    this.renderPending = false;
     this.renderTimer = null;
     this.cacheDOM();
     this.init();
@@ -39,6 +45,7 @@ export class App {
     this.els.infoText = $('infoText');
     this.els.canvasWrapper = $('canvasWrapper');
     this.els.previewCanvas = $('previewCanvas');
+    this.els.frameCanvas = $('frameCanvas');
     this.els.dragHint = $('dragHint');
     this.els.frameToggle = $('frameToggle');
     this.els.toolBar = $('toolBar');
@@ -63,18 +70,18 @@ export class App {
     this.els.reUploadBtn.addEventListener('click', () => this.resetToUpload());
     this.els.downloadBtn.addEventListener('click', () => this.handleDownload());
 
-    // 相框开关（预览区右上角）
-    this.els.frameToggle.addEventListener('change', async (e) => {
+    // 相框开关 —— 只操作 overlay canvas，不做全量重绘
+    this.els.frameToggle.addEventListener('change', (e) => {
       this.state.frameEnabled = e.target.checked;
       if (this.state.frameEnabled) {
-        await this.preloadCurrentFrame();
-        this.state.puzzleCanvas = null;
+        this.drawFrameOverlay();
+      } else {
+        this.clearFrameOverlay();
       }
       this.updateInfoBar();
-      this.scheduleRender();
     });
 
-    // 底部工具栏按钮
+    // 底部工具栏
     this.els.toolBtns.forEach(btn => {
       btn.addEventListener('click', () => this.switchTool(btn.dataset.tool));
     });
@@ -86,11 +93,140 @@ export class App {
     document.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
     document.addEventListener('mouseup', () => this.endDrag());
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
-    // 取消点击预览图放大功能
 
-    // 默认展开尺寸
     this.renderToolContent('size');
   }
+
+  // ===================== 分层渲染核心 =====================
+
+  /** 标记基座需要重建（参数变更时调用） */
+  scheduleRebuild() {
+    if (this.renderTimer) cancelAnimationFrame(this.renderTimer);
+    this.renderTimer = requestAnimationFrame(() => {
+      this.rebuildBase();
+      if (this.state.frameEnabled) this.drawFrameOverlay();
+      this.els.previewCanvas.classList.remove('updating');
+    });
+  }
+
+  /** 重建 puzzleCanvas + 更新 previewCanvas */
+  rebuildBase() {
+    if (!this.state.image) return;
+    const size = this.state.selectedSize;
+    const nr = this.state.rotation % 180 !== 0;
+    const cmW = nr ? size.heightCm : size.widthCm;
+    const cmH = nr ? size.widthCm : size.heightCm;
+
+    const wrapper = this.els.canvasWrapper;
+    const wrapperW = wrapper.clientWidth;
+    const wrapperH = wrapper.clientHeight;
+    const aspect = cmW / cmH;
+    let pvw, pvh;
+    if (wrapperW / wrapperH > aspect) {
+      pvh = Math.round(wrapperH * 0.95);
+      pvw = Math.round(pvh * aspect);
+    } else {
+      pvw = Math.round(wrapperW * 0.95);
+      pvh = Math.round(pvw / aspect);
+    }
+    // 移动端渲染分辨率控制：限制最大预览尺寸以提升性能
+    const isMobile = window.innerWidth < 480;
+    const MAX_PREV = isMobile ? 600 : 1000;
+    if (pvw > MAX_PREV) { pvw = MAX_PREV; pvh = Math.round(pvw / aspect); }
+    if (pvh > MAX_PREV) { pvh = MAX_PREV; pvw = Math.round(pvh * aspect); }
+
+    // 重建 puzzleCanvas
+    this.puzzleCanvas.width = pvw;
+    this.puzzleCanvas.height = pvh;
+    renderImage(this.puzzleCanvas.getContext('2d'), this.state.image, pvw, pvh, {
+      zoom: this.state.zoom, offsetX: 0, offsetY: 0,
+      rotation: this.state.rotation, fillColor: this.state.fillColor,
+    });
+
+    // 更新 previewCanvas
+    const canvas = this.els.previewCanvas;
+    canvas.style.width = '';
+    canvas.style.height = '';
+    canvas.width = pvw;
+    canvas.height = pvh;
+    canvas.getContext('2d').drawImage(this.puzzleCanvas, 0, 0);
+
+    // 清除frame overlay尺寸缓存 (相框需要重新计算位置)
+    this._frameDims = null;
+  }
+
+  /** 在 frameCanvas 上绘制相框（仅在基座不变时快速叠加） */
+  drawFrameOverlay() {
+    const fc = this.els.frameCanvas;
+    const fctx = fc.getContext('2d');
+    fctx.setTransform(1, 0, 0, 1, 0, 0);
+    fctx.clearRect(0, 0, fc.width, fc.height);
+
+    // 计算相框key
+    const sizeIndex = SIZES.indexOf(this.state.selectedSize);
+    if (sizeIndex < 0) return;
+    const nr = this.state.rotation % 180 !== 0;
+    const pw = nr ? this.state.selectedSize.heightCm : this.state.selectedSize.widthCm;
+    const ph = nr ? this.state.selectedSize.widthCm : this.state.selectedSize.heightCm;
+    const isLandscape = pw >= ph;
+    const frameKey = getFrameKey(sizeIndex, isLandscape);
+    this.state.currentFrameKey = frameKey;
+
+    const frameImg = this.frameImgCache[frameKey];
+    if (!frameImg) {
+      // 异步加载
+      this.loadFrameImageAsync(frameKey);
+      return;
+    }
+
+    // 计算相框显示尺寸
+    const cfg = FRAME_CONFIG[frameKey];
+    const wrapper = this.els.canvasWrapper;
+    const wrapW = wrapper.clientWidth;
+    const wrapH = wrapper.clientHeight;
+    const frameAspect = cfg.frameWidth / cfg.frameHeight;
+    const margin = 0.94;
+    const availW = wrapW * margin;
+    const availH = wrapH * margin;
+    let dsW, dsH;
+    if (availW / availH > frameAspect) {
+      dsH = Math.round(availH); dsW = Math.round(dsH * frameAspect);
+    } else {
+      dsW = Math.round(availW); dsH = Math.round(dsW / frameAspect);
+    }
+    this._frameDims = { dsW, dsH };
+
+    // 设置frameCanvas尺寸并绘制
+    fc.width = dsW;
+    fc.height = dsH;
+    fc.style.width = dsW + 'px';
+    fc.style.height = dsH + 'px';
+    fc.style.display = 'block';
+    this.els.previewCanvas.classList.add('frame-active');
+
+    renderFrame(fctx, this.puzzleCanvas, frameKey, frameImg, dsW, dsH);
+  }
+
+  async loadFrameImageAsync(frameKey) {
+    try {
+      const img = await loadFrameImage(frameKey);
+      this.frameImgCache[frameKey] = img;
+      if (this.state.frameEnabled) this.drawFrameOverlay();
+    } catch (e) {
+      console.warn('相框加载失败:', e);
+    }
+  }
+
+  clearFrameOverlay() {
+    const fc = this.els.frameCanvas;
+    fc.style.display = 'none';
+    const fctx = fc.getContext('2d');
+    fctx.clearRect(0, 0, fc.width, fc.height);
+    this.els.previewCanvas.classList.remove('frame-active');
+  }
+
+  /** 恢复scheduleRender别名兼容（用于重置等旧调用） */
+  scheduleRender() { this.scheduleRebuild(); }
 
   // ===================== 工具切换 =====================
   switchTool(tool) {
@@ -142,9 +278,8 @@ export class App {
       container.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       this.state.selectedSize = SIZES[parseInt(btn.dataset.index)];
-      if (this.state.frameEnabled) this.preloadCurrentFrame();
       this.updateInfoBar();
-      this.scheduleRender();
+      this.scheduleRebuild();
     });
   }
 
@@ -165,7 +300,7 @@ export class App {
       container.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       this.state.quality = parseInt(btn.dataset.scale);
-      this.scheduleRender();
+      // 质量只影响下载，预览不变
     });
   }
 
@@ -188,19 +323,17 @@ export class App {
       this.state.zoom = v;
       container.querySelector('#sZoomVal').textContent = v + '%';
       this.updateInfoBar();
-      this.scheduleRender();
+      this.scheduleRebuild();
     });
     container.querySelector('#sRotateLeft').addEventListener('click', () => {
       this.state.rotation = (this.state.rotation - 90 + 360) % 360;
-      if (this.state.frameEnabled) this.preloadCurrentFrame();
       this.updateInfoBar();
-      this.scheduleRender();
+      this.scheduleRebuild();
     });
     container.querySelector('#sRotateRight').addEventListener('click', () => {
       this.state.rotation = (this.state.rotation + 90) % 360;
-      if (this.state.frameEnabled) this.preloadCurrentFrame();
       this.updateInfoBar();
-      this.scheduleRender();
+      this.scheduleRebuild();
     });
   }
 
@@ -228,7 +361,7 @@ export class App {
     this.els.toolContentInner.querySelectorAll('.color-btn:not(.custom)').forEach(b => {
       b.classList.toggle('active', b.dataset.color.toLowerCase() === color.toLowerCase());
     });
-    this.scheduleRender();
+    this.scheduleRebuild();
   }
 
   // ===================== 触摸 =====================
@@ -290,7 +423,7 @@ export class App {
         if (sZoom) { sZoom.value = clamped; vZoom.textContent = clamped + '%'; }
       }
       this.updateInfoBar();
-      this.scheduleRender();
+      this.scheduleRebuild();
     } else if (!this.state.isPinching && e.touches.length === 1) {
       const dx = Math.abs(e.touches[0].clientX - this.state.dragStartX);
       const dy = Math.abs(e.touches[0].clientY - this.state.dragStartY);
@@ -316,20 +449,22 @@ export class App {
       this.state.zoom = DEFAULTS.zoom;
       this.state.rotation = DEFAULTS.rotation;
       this.state.fillColor = DEFAULTS.fillColor;
-      this.state.puzzleCanvas = null;
       this.state.frameEnabled = false;
       this.setActiveColor(DEFAULTS.fillColor);
 
       this.els.uploadArea.style.display = 'none';
       this.els.editorArea.style.display = 'flex';
       this.els.frameToggle.checked = false;
+      this.clearFrameOverlay();
       this.activeTool = 'size';
       this.els.toolBtns.forEach(b => b.classList.toggle('active', b.dataset.tool === 'size'));
       this.renderToolContent('size');
       this.updateInfoBar();
       this.hideLoading();
-      this.renderPreview();
-      this.preloadCurrentFrame();
+      this.scheduleRebuild();
+
+      // 后台预加载所有相框图片（只加载一次）
+      this.preloadAllFrames();
     } catch (err) {
       this.hideLoading();
       this.showToast('图片加载失败，请重试');
@@ -339,115 +474,49 @@ export class App {
   resetToUpload() {
     this.state.image = null;
     this.state.originalFile = null;
-    this.state.puzzleCanvas = null;
     this.state.frameEnabled = false;
-    this.state.frameImages = {};
     this.state.currentFrameKey = null;
     this.els.uploadArea.style.display = 'flex';
     this.els.editorArea.style.display = 'none';
     this.els.fileInput.value = '';
+    this.clearFrameOverlay();
   }
 
   resetImage() {
     if (!this.state.image) return;
     this.state.zoom = DEFAULTS.zoom;
     this.state.rotation = DEFAULTS.rotation;
-    this.state.puzzleCanvas = null;
     this.updateInfoBar();
-    this.scheduleRender();
+    this.scheduleRebuild();
     this.showToast('已重置');
   }
 
-  // ===================== 渲染 =====================
-  scheduleRender() {
-    if (this.renderTimer) cancelAnimationFrame(this.renderTimer);
-    this.els.previewCanvas.classList.add('updating');
-    this.renderTimer = requestAnimationFrame(() => this.renderPreview());
-  }
-
-  renderPreview() {
-    if (!this.state.image) return;
-    const size = this.state.selectedSize;
+  // ===================== 相框预加载（一次性全部加载） =====================
+  async preloadAllFrames() {
+    // 根据当前图片方向确定需要加载的相框
     const nr = this.state.rotation % 180 !== 0;
-    const cmW = nr ? size.heightCm : size.widthCm;
-    const cmH = nr ? size.widthCm : size.heightCm;
+    const pw = nr ? this.state.selectedSize.heightCm : this.state.selectedSize.widthCm;
+    const ph = nr ? this.state.selectedSize.widthCm : this.state.selectedSize.heightCm;
+    const isLandscape = pw >= ph;
 
-    const wrapper = this.els.canvasWrapper;
-    const wrapperW = wrapper.clientWidth;
-    const wrapperH = wrapper.clientHeight;
-    const aspect = cmW / cmH;
-    let pvw, pvh;
-    if (wrapperW / wrapperH > aspect) {
-      pvh = Math.round(wrapperH * 0.95);
-      pvw = Math.round(pvh * aspect);
-    } else {
-      pvw = Math.round(wrapperW * 0.95);
-      pvh = Math.round(pvw / aspect);
-    }
-    const MAX_PREV = 1000;
-    if (pvw > MAX_PREV) { pvw = MAX_PREV; pvh = Math.round(pvw / aspect); }
-    if (pvh > MAX_PREV) { pvh = MAX_PREV; pvw = Math.round(pvh * aspect); }
+    const keys = SIZE_KEYS.map(s => `${s}_${isLandscape ? 'h' : 'v'}`);
+    // 也加载另一个方向的，防止旋转后需要
+    const allKeys = [...new Set([
+      ...keys,
+      ...SIZE_KEYS.map(s => `${s}_h`),
+      ...SIZE_KEYS.map(s => `${s}_v`),
+    ])];
 
-    const pc = this.state.puzzleCanvas || (this.state.puzzleCanvas = document.createElement('canvas'));
-    pc.width = pvw;
-    pc.height = pvh;
-    renderImage(pc.getContext('2d'), this.state.image, pvw, pvh, {
-      zoom: this.state.zoom, offsetX: 0, offsetY: 0,
-      rotation: this.state.rotation, fillColor: this.state.fillColor,
-    });
-
-    if (this.state.frameEnabled) {
-      this.renderFramePreview(pc, wrapperW, wrapperH);
-    } else {
-      this.renderNormalPreview(pc);
-    }
-    this.els.previewCanvas.classList.remove('updating');
+    await Promise.allSettled(allKeys.map(async (key) => {
+      if (!this.frameImgCache[key]) {
+        try {
+          const img = await loadFrameImage(key);
+          this.frameImgCache[key] = img;
+        } catch {}
+      }
+    }));
   }
 
-  renderNormalPreview(pc) {
-    const canvas = this.els.previewCanvas;
-    const ctx = canvas.getContext('2d');
-    canvas.classList.remove('frame-active');
-    canvas.style.width = '';
-    canvas.style.height = '';
-    canvas.width = pc.width;
-    canvas.height = pc.height;
-    ctx.drawImage(pc, 0, 0);
-  }
-
-  renderFramePreview(pc, wrapW, wrapH) {
-    const frameKey = this.state.currentFrameKey;
-    const frameImg = this.state.frameImages[frameKey];
-    if (!frameImg || !frameKey) { this.renderNormalPreview(pc); return; }
-
-    // 计算相框显示尺寸——填满预览区同时保持相框比例
-    const cfg = FRAME_CONFIG[frameKey];
-    const frameAspect = cfg.frameWidth / cfg.frameHeight;
-    const margin = 0.94;
-    const availW = wrapW * margin;
-    const availH = wrapH * margin;
-
-    let dsW, dsH;
-    if (availW / availH > frameAspect) {
-      // 预览区相对更宽：相框填满高度
-      dsH = Math.round(availH);
-      dsW = Math.round(dsH * frameAspect);
-    } else {
-      // 预览区相对更高：相框填满宽度
-      dsW = Math.round(availW);
-      dsH = Math.round(dsW / frameAspect);
-    }
-
-    // 添加frame-active标记让CSS控制canvas尺寸
-    this.els.previewCanvas.classList.add('frame-active');
-
-    const canvas = this.els.previewCanvas;
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
-  }
-
-  // ===================== 全屏预览 =====================
   // ===================== 下载 =====================
   async handleDownload() {
     if (!this.state.image) return;
@@ -471,18 +540,18 @@ export class App {
       pxW = Math.round(pxW * mul); pxH = Math.round(pxH * mul);
       const MAX = 4096;
       if (pxW > MAX || pxH > MAX) {
-        const ratio = Math.min(MAX / pxW, MAX / pxH);
-        pxW = Math.round(pxW * ratio); pxH = Math.round(pxH * ratio);
+        const r = Math.min(MAX / pxW, MAX / pxH);
+        pxW = Math.round(pxW * r); pxH = Math.round(pxH * r);
       }
-      const offscreen = document.createElement('canvas');
-      const ctx = offscreen.getContext('2d');
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
       renderImage(ctx, this.state.image, pxW, pxH, {
         zoom: this.state.zoom, offsetX: 0, offsetY: 0,
         rotation: this.state.rotation, fillColor: this.state.fillColor,
       });
       const filename = getOutputFilename(size.name, mode);
       await new Promise(r => setTimeout(r, 50));
-      downloadImage(offscreen, filename);
+      downloadImage(canvas, filename);
       this.showToast('图片已生成，开始下载');
     } catch (err) {
       this.showToast('下载失败，请重试');
@@ -500,27 +569,6 @@ export class App {
     const cmH = nr ? size.widthCm : size.heightCm;
     const ft = this.state.frameEnabled ? ' · 相框已开启' : '';
     this.els.infoText.textContent = `${size.name} · ${cmW}×${cmH}cm · 缩放${this.state.zoom}%${ft}`;
-  }
-
-  // ===================== 相框 =====================
-  async preloadCurrentFrame() {
-    if (!this.state.image) return;
-    try {
-      const sizeIndex = SIZES.indexOf(this.state.selectedSize);
-      if (sizeIndex < 0) return;
-      const nr = this.state.rotation % 180 !== 0;
-      const pcW = nr ? this.state.selectedSize.heightCm : this.state.selectedSize.widthCm;
-      const pcH = nr ? this.state.selectedSize.widthCm : this.state.selectedSize.heightCm;
-      const isLandscape = pcW >= pcH;
-      const frameKey = getFrameKey(sizeIndex, isLandscape);
-      this.state.currentFrameKey = frameKey;
-      if (!this.state.frameImages[frameKey]) {
-        const img = await loadFrameImage(frameKey);
-        this.state.frameImages[frameKey] = img;
-      }
-    } catch (e) {
-      console.warn('相框预加载失败:', e);
-    }
   }
 
   // ===================== UI =====================
