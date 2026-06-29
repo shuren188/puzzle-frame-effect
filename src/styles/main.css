@@ -23,23 +23,21 @@ body::before{content:'';position:fixed;top:-30%;left:-20%;width:60%;height:55%;b
 body::after{content:'';position:fixed;bottom:-25%;right:-20%;width:55%;height:50%;background:radial-gradient(ellipse,rgba(183,148,244,0.04) 0%,transparent 70%);pointer-events:none;z-index:0}
 #app{position:relative;z-index:1;width:100%;height:100dvh;height:100vh;display:flex;flex-direction:column}
 
-/* ========== 上传界面（截图样式） ========== */
+/* ========== 上传界面 ========== */
 .upload-area{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden;padding:24px}
-.upload-scan{position:absolute;left:-10%;width:120%;height:1px;pointer-events:none;z-index:0;animation:scanLine 4s ease-in-out infinite;opacity:.6}
-.top-scan{top:22%;background:linear-gradient(90deg,transparent 5%,var(--cyan-soft) 45%,var(--purple-soft) 55%,transparent 95%);box-shadow:0 0 20px rgba(92,229,229,0.25),0 0 50px rgba(183,148,244,0.12)}
-.bot-scan{top:52%;background:linear-gradient(90deg,transparent 5%,var(--purple-soft) 45%,var(--cyan-soft) 55%,transparent 95%);box-shadow:0 0 20px rgba(183,148,244,0.25),0 0 50px rgba(92,229,229,0.12);animation-delay:2s}
-@keyframes scanLine{0%,100%{transform:translateY(0);opacity:.3}50%{opacity:.9}75%{transform:translateY(120px);opacity:.15}}
 
 .upload-card{display:flex;flex-direction:column;align-items:center;gap:0;width:100%;max-width:340px;cursor:pointer;position:relative;overflow:hidden;transition:all .4s cubic-bezier(.22,1,.36,1)}
 .upload-card>*{position:relative;z-index:1}
 .upload-title{font-size:1.7rem;font-weight:800;background:linear-gradient(135deg,#fff 0%,var(--cyan-soft) 35%,var(--purple-soft) 70%,var(--pink-soft) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-align:center;letter-spacing:-.01em;line-height:1.3;margin-bottom:4px}
 .upload-subtitle{font-size:.82rem;color:var(--text-muted);font-weight:500;text-align:center;margin-bottom:20px;letter-spacing:.02em}
-.upload-box{width:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding:28px 20px;border:1.5px dashed rgba(255,255,255,0.1);border-radius:14px;background:rgba(0,0,0,0.15);transition:all .4s}
+.upload-box{width:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding:28px 20px;border:1.5px dashed rgba(255,255,255,0.1);border-radius:14px;background:rgba(0,0,0,0.15);transition:all .4s;position:relative;overflow:hidden}
+.upload-box-scan{position:absolute;inset:0;pointer-events:none;z-index:0;background:linear-gradient(135deg,transparent 30%,rgba(92,229,229,0.08) 40%,rgba(183,148,244,0.06) 46%,rgba(92,229,229,0.08) 52%,transparent 62%);background-size:200% 200%;animation:diagonalScan 4s ease-in-out infinite}
+@keyframes diagonalScan{0%{background-position:200% 200%}50%{background-position:0% 0%}100%{background-position:-200% -200%}}
 .upload-card:hover .upload-box{border-color:rgba(92,229,229,0.2);background:rgba(92,229,229,0.03)}
-.upload-box-icon{color:var(--text-muted);opacity:.35;transition:all .4s}
+.upload-box-icon{color:var(--text-muted);opacity:.35;transition:all .4s;position:relative;z-index:1}
 .upload-card:hover .upload-box-icon{color:var(--cyan-soft);opacity:.7;transform:scale(1.06)}
-.upload-box-text{font-size:.82rem;color:var(--text-primary);font-weight:500}
-.upload-box-sub{font-size:.68rem;color:var(--text-dim);margin-top:2px}
+.upload-box-text{font-size:.82rem;color:var(--text-primary);font-weight:500;position:relative;z-index:1;text-align:center}
+.upload-box-sub{font-size:.68rem;color:var(--text-dim);text-align:center;line-height:1.6;position:relative;z-index:1}
 
 /* ========== 编辑器 ========== */
 .editor-area{flex:1;display:flex;flex-direction:column;position:relative;overflow:hidden}
