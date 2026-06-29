@@ -19,16 +19,16 @@
 // 内框坐标配置（人工测量，禁止修改）
 // ============================
 export const FRAME_CONFIG = {
-  '35_h': { frameWidth: 2276, frameHeight: 1696, innerLeft: 428, innerTop: 389, innerWidth: 1410, innerHeight: 957 },
-  '35_v': { frameWidth: 1792, frameHeight: 2400, innerLeft: 422, innerTop: 532, innerWidth: 948, innerHeight: 1420 },
-  '70_h': { frameWidth: 2346, frameHeight: 1792, innerLeft: 431, innerTop: 367, innerWidth: 1506, innerHeight: 1106 },
-  '70_v': { frameWidth: 1792, frameHeight: 2400, innerLeft: 391, innerTop: 473, innerWidth: 1070, innerHeight: 1413 },
-  '120_h': { frameWidth: 2304, frameHeight: 1856, innerLeft: 356, innerTop: 297, innerWidth: 1593, innerHeight: 1278 },
-  '120_v': { frameWidth: 1792, frameHeight: 2400, innerLeft: 254, innerTop: 363, innerWidth: 1285, innerHeight: 1635 },
-  '200_h': { frameWidth: 2348, frameHeight: 1728, innerLeft: 257, innerTop: 229, innerWidth: 1838, innerHeight: 1296 },
-  '200_v': { frameWidth: 1792, frameHeight: 2400, innerLeft: 284, innerTop: 308, innerWidth: 1247, innerHeight: 1800 },
-  '300_h': { frameWidth: 2293, frameHeight: 1696, innerLeft: 272, innerTop: 249, innerWidth: 1766, innerHeight: 1209 },
-  '300_v': { frameWidth: 1792, frameHeight: 2400, innerLeft: 300, innerTop: 292, innerWidth: 1225, innerHeight: 1800 },
+  '35_h': { frameWidth: 2276, frameHeight: 1673, innerLeft: 428, innerTop: 386, innerWidth: 1414, innerHeight: 942 },
+  '35_v': { frameWidth: 1792, frameHeight: 2400, innerLeft: 422, innerTop: 529, innerWidth: 947, innerHeight: 1422 },
+  '70_h': { frameWidth: 2308, frameHeight: 1792, innerLeft: 425, innerTop: 365, innerWidth: 1480, innerHeight: 1111 },
+  '70_v': { frameWidth: 1657, frameHeight: 2113, innerLeft: 307, innerTop: 349, innerWidth: 1060, innerHeight: 1413 },
+  '120_h': { frameWidth: 2236, frameHeight: 1819, innerLeft: 323, innerTop: 267, innerWidth: 1592, innerHeight: 1273 },
+  '120_v': { frameWidth: 1760, frameHeight: 2351, innerLeft: 238, innerTop: 362, innerWidth: 1282, innerHeight: 1604 },
+  '200_h': { frameWidth: 2348, frameHeight: 1721, innerLeft: 257, innerTop: 230, innerWidth: 1843, innerHeight: 1289 },
+  '200_v': { frameWidth: 1792, frameHeight: 2385, innerLeft: 281, innerTop: 306, innerWidth: 1250, innerHeight: 1786 },
+  '300_h': { frameWidth: 2275, frameHeight: 1678, innerLeft: 253, innerTop: 248, innerWidth: 1767, innerHeight: 1209 },
+  '300_v': { frameWidth: 1792, frameHeight: 2363, innerLeft: 298, innerTop: 289, innerWidth: 1230, innerHeight: 1798 },
 };
 
 /** 尺寸索引 → 名称映射 */
