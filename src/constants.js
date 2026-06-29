@@ -34,7 +34,7 @@ export const DEFAULTS = {
 };
 
 /** 缩放范围 */
-export const ZOOM_RANGE = { min: 50, max: 150, step: 1 };
+export const ZOOM_RANGE = { min: 50, max: 300, step: 1 };
 
 /** 偏移范围 (%) */
 export const OFFSET_RANGE = { min: -100, max: 100, step: 1 };
