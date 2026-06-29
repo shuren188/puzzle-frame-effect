@@ -63,12 +63,16 @@ export class App {
     this.els.reUploadBtn.addEventListener('click', () => this.resetToUpload());
     this.els.downloadBtn.addEventListener('click', () => this.handleDownload());
 
-    // 相框开关（预览区右上角）
-    this.els.frameToggle.addEventListener('change', async (e) => {
+    // 相框开关（预览区右上角）—— 不阻塞UI，不无效缓存
+    this.els.frameToggle.addEventListener('change', (e) => {
       this.state.frameEnabled = e.target.checked;
       if (this.state.frameEnabled) {
-        await this.preloadCurrentFrame();
-        this.state.puzzleCanvas = null;
+        // 异步加载相框，加载完成后自动叠加（不阻塞当前渲染）
+        this.preloadCurrentFrame().then(() => {
+          if (this.state.frameEnabled && this.state.currentFrameKey) {
+            this.scheduleRender();
+          }
+        });
       }
       this.updateInfoBar();
       this.scheduleRender();
@@ -329,7 +333,8 @@ export class App {
       this.updateInfoBar();
       this.hideLoading();
       this.renderPreview();
-      this.preloadCurrentFrame();
+      // 后台预加载所有相框（不阻塞UI）
+      this.preloadAllFrames();
     } catch (err) {
       this.hideLoading();
       this.showToast('图片加载失败，请重试');
@@ -503,24 +508,35 @@ export class App {
   }
 
   // ===================== 相框 =====================
-  async preloadCurrentFrame() {
-    if (!this.state.image) return;
-    try {
-      const sizeIndex = SIZES.indexOf(this.state.selectedSize);
-      if (sizeIndex < 0) return;
-      const nr = this.state.rotation % 180 !== 0;
-      const pcW = nr ? this.state.selectedSize.heightCm : this.state.selectedSize.widthCm;
-      const pcH = nr ? this.state.selectedSize.widthCm : this.state.selectedSize.heightCm;
-      const isLandscape = pcW >= pcH;
-      const frameKey = getFrameKey(sizeIndex, isLandscape);
-      this.state.currentFrameKey = frameKey;
-      if (!this.state.frameImages[frameKey]) {
-        const img = await loadFrameImage(frameKey);
-        this.state.frameImages[frameKey] = img;
+  /** 获取并缓存当前尺寸对应的相框key */
+  preloadCurrentFrame() {
+    if (!this.state.image) return Promise.resolve();
+    const sizeIndex = SIZES.indexOf(this.state.selectedSize);
+    if (sizeIndex < 0) return Promise.resolve();
+    const nr = this.state.rotation % 180 !== 0;
+    const pcW = nr ? this.state.selectedSize.heightCm : this.state.selectedSize.widthCm;
+    const pcH = nr ? this.state.selectedSize.widthCm : this.state.selectedSize.heightCm;
+    const isLandscape = pcW >= pcH;
+    const frameKey = getFrameKey(sizeIndex, isLandscape);
+    this.state.currentFrameKey = frameKey;
+    // 如果已缓存直接返回
+    if (this.state.frameImages[frameKey]) return Promise.resolve();
+    // 未缓存则加载
+    return loadFrameImage(frameKey).then(img => {
+      this.state.frameImages[frameKey] = img;
+    }).catch(e => console.warn('相框加载失败:', e));
+  }
+
+  /** 上传后后台一次性预加载全部10个相框（不阻塞UI，只加载一次） */
+  preloadAllFrames() {
+    const ALL_KEYS = ['35_h','35_v','70_h','70_v','120_h','120_v','200_h','200_v','300_h','300_v'];
+    ALL_KEYS.forEach(key => {
+      if (!this.state.frameImages[key]) {
+        loadFrameImage(key).then(img => {
+          this.state.frameImages[key] = img;
+        }).catch(() => {});
       }
-    } catch (e) {
-      console.warn('相框预加载失败:', e);
-    }
+    });
   }
 
   // ===================== UI =====================
