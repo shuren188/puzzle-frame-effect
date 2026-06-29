@@ -2,14 +2,14 @@ import { SIZES, QUALITIES, PRESET_COLORS, DEFAULTS, DRAG_SENSITIVITY, ZOOM_RANGE
 import { renderImage, loadImage } from '../utils/imageProcessor.js';
 import { downloadImage, getOutputFilename } from '../utils/download.js';
 import { ColorPicker } from './ColorPicker.js';
-import { renderFrame, loadFrameImage, getFrameKey, getFrameDisplaySize, FRAME_CONFIG } from '../utils/frameProcessor.js';
+import { renderFrame, loadFrameImage, getFrameKey, getFrameDisplaySize } from '../utils/frameProcessor.js';
 
 const PINCH_SENSITIVITY = 0.45;
 
 export class App {
   constructor() {
     this.els = {};
-    this.activeTool = null;
+    this.activeTool = 'size'; // 默认展开尺寸
     this.state = {
       image: null, originalFile: null,
       selectedSize: SIZES[DEFAULTS.sizeIndex],
@@ -42,10 +42,7 @@ export class App {
     this.els.dragHint = $('dragHint');
     this.els.toolBar = $('toolBar');
     this.els.toolBtns = this.els.toolBar.querySelectorAll('.tool-btn');
-    this.els.toolSheet = $('toolSheet');
-    this.els.sheetTitle = $('sheetTitle');
-    this.els.sheetBody = $('sheetBody');
-    this.els.sheetClose = $('sheetClose');
+    this.els.toolContentInner = $('toolContentInner');
   }
 
   init() {
@@ -65,18 +62,12 @@ export class App {
     this.els.reUploadBtn.addEventListener('click', () => this.resetToUpload());
     this.els.downloadBtn.addEventListener('click', () => this.handleDownload());
 
-    // 底部工具栏按钮——增强点击效果
+    // 底部工具栏——点击切换工具（默认展开）
     this.els.toolBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        btn.classList.add('tool-btn-pop');
-        setTimeout(() => btn.classList.remove('tool-btn-pop'), 200);
-        this.toggleTool(btn.dataset.tool);
-      });
+      btn.addEventListener('click', () => this.switchTool(btn.dataset.tool));
     });
 
-    this.els.sheetClose.addEventListener('click', () => this.closeSheet());
-
-    // 触摸/鼠标拖拽
+    // 触摸
     this.els.canvasWrapper.addEventListener('mousedown', (e) => this.startDrag(e));
     this.els.canvasWrapper.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
     document.addEventListener('mousemove', (e) => this.onDrag(e));
@@ -84,56 +75,50 @@ export class App {
     document.addEventListener('mouseup', () => this.endDrag());
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
     this.els.canvasWrapper.addEventListener('click', (e) => {
-      if (this.state.image && !this.state.isDragging && !this.isSheetOpen()) this.openFullscreenPreview(e);
+      if (this.state.image && !this.state.isDragging) this.openFullscreenPreview(e);
     });
+
+    // 默认渲染尺寸面板
+    this.renderToolContent('size');
   }
 
-  // ===================== 工具面板 =====================
-  toggleTool(tool) {
-    if (this.activeTool === tool && this.els.toolSheet.classList.contains('open')) {
-      this.closeSheet();
-      return;
-    }
+  // ===================== 工具切换（带动画） =====================
+  switchTool(tool) {
+    if (tool === this.activeTool) return;
     this.activeTool = tool;
-    this.els.toolBtns.forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
-    this.renderSheetContent(tool);
-    this.els.sheetTitle.textContent = this.getToolTitle(tool);
-    requestAnimationFrame(() => {
-      this.els.toolSheet.classList.add('open');
-      this.els.toolSheet.classList.add('anim-fade-in');
+    this.els.toolBtns.forEach(b => {
+      b.classList.toggle('active', b.dataset.tool === tool);
+      if (b.dataset.tool === tool) {
+        b.classList.add('tool-btn-pop');
+        setTimeout(() => b.classList.remove('tool-btn-pop'), 250);
+      }
     });
+    this.renderToolContent(tool);
   }
 
-  closeSheet() {
-    this.els.toolSheet.classList.remove('open');
-    this.els.toolBtns.forEach(b => b.classList.remove('active'));
-    this.activeTool = null;
+  renderToolContent(tool) {
+    const inner = this.els.toolContentInner;
+    // 淡出
+    inner.style.opacity = '0';
+    inner.style.transform = 'translateY(6px)';
+    setTimeout(() => {
+      switch (tool) {
+        case 'size': this.renderSizePanel(inner); break;
+        case 'quality': this.renderQualityPanel(inner); break;
+        case 'adjust': this.renderAdjustPanel(inner); break;
+        case 'color': this.renderColorPanel(inner); break;
+        case 'frame': this.renderFramePanel(inner); break;
+      }
+      // 淡入
+      requestAnimationFrame(() => {
+        inner.style.transition = 'opacity .25s cubic-bezier(.22,1,.36,1), transform .25s cubic-bezier(.22,1,.36,1)';
+        inner.style.opacity = '1';
+        inner.style.transform = 'translateY(0)';
+      });
+    }, 150);
   }
 
-  isSheetOpen() { return this.els.toolSheet.classList.contains('open'); }
-
-  getToolTitle(tool) {
-    const titles = {
-      size: '拼图尺寸',
-      quality: '画质修复',
-      adjust: '旋转角度',
-      color: '填充颜色',
-      frame: '添加相框',
-    };
-    return titles[tool] || tool;
-  }
-
-  renderSheetContent(tool) {
-    const body = this.els.sheetBody;
-    switch (tool) {
-      case 'size': this.renderSizePanel(body); break;
-      case 'quality': this.renderQualityPanel(body); break;
-      case 'adjust': this.renderAdjustPanel(body); break;
-      case 'color': this.renderColorPanel(body); break;
-      case 'frame': this.renderFramePanel(body); break;
-    }
-  }
-
+  // ===================== 各面板渲染 =====================
   renderSizePanel(container) {
     container.innerHTML = `
       <div class="size-scroll">
@@ -151,11 +136,9 @@ export class App {
       container.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       this.state.selectedSize = SIZES[parseInt(btn.dataset.index)];
-      // 相框开启时即时预览
       if (this.state.frameEnabled) this.preloadCurrentFrame();
       this.updateInfoBar();
       this.scheduleRender();
-      setTimeout(() => this.closeSheet(), 200);
     });
   }
 
@@ -177,7 +160,6 @@ export class App {
       btn.classList.add('active');
       this.state.quality = parseInt(btn.dataset.scale);
       this.scheduleRender();
-      setTimeout(() => this.closeSheet(), 200);
     });
   }
 
@@ -185,7 +167,7 @@ export class App {
     container.innerHTML = `
       <div class="slider-group">
         <label class="slider-label">
-          <span>缩放</span>
+          <span>缩放比例</span>
           <span class="slider-value" id="sZoomVal">${this.state.zoom}%</span>
         </label>
         <input type="range" class="slider" id="sZoomSlider" min="${ZOOM_RANGE.min}" max="${ZOOM_RANGE.max}" value="${this.state.zoom}" step="${ZOOM_RANGE.step}" />
@@ -195,7 +177,6 @@ export class App {
         <button class="rotate-btn" id="sRotateRight">↻ 右转90°</button>
       </div>
     `;
-
     container.querySelector('#sZoomSlider').addEventListener('input', () => {
       const v = parseInt(container.querySelector('#sZoomSlider').value);
       this.state.zoom = v;
@@ -203,7 +184,6 @@ export class App {
       this.updateInfoBar();
       this.scheduleRender();
     });
-
     container.querySelector('#sRotateLeft').addEventListener('click', () => {
       this.state.rotation = (this.state.rotation - 90 + 360) % 360;
       if (this.state.frameEnabled) this.preloadCurrentFrame();
@@ -263,18 +243,16 @@ export class App {
 
   setActiveColor(color) {
     this.state.fillColor = color;
-    const body = this.els.sheetBody;
-    body.querySelectorAll('.color-btn:not(.custom)').forEach(b => {
+    this.els.toolContentInner.querySelectorAll('.color-btn:not(.custom)').forEach(b => {
       b.classList.toggle('active', b.dataset.color.toLowerCase() === color.toLowerCase());
     });
     this.scheduleRender();
   }
 
-  // ===================== 拖拽 =====================
+  // ===================== 触摸/拖拽 =====================
   startDrag(e) {
     if (!this.state.image) return;
     const pt = e.touches ? e.touches[0] : e;
-    if (!this.isTouchOnImage(pt)) return;
     this.state.isDragging = true;
     this.els.canvasWrapper.classList.add('dragging');
     this.state.dragStartX = pt.clientX;
@@ -283,7 +261,6 @@ export class App {
 
   onDrag(e) {
     if (!this.state.isDragging) return;
-    // 拖拽只用于触发重置等交互，不用于偏移拖动
     const dx = Math.abs((e.touches ? e.touches[0].clientX : e.clientX) - this.state.dragStartX);
     const dy = Math.abs((e.touches ? e.touches[0].clientY : e.clientY) - this.state.dragStartY);
     if (dx > 5 || dy > 5) this.state.touchMoved = true;
@@ -302,31 +279,9 @@ export class App {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
-  isTouchOnImage(pos) {
-    if (!this.state.image) return false;
-    const c = this.els.previewCanvas, r = c.getBoundingClientRect();
-    const cw = c.width, ch = c.height;
-    const scale = Math.min(r.width / cw, r.height / ch);
-    const rw = cw * scale, rh = ch * scale;
-    const ox = (r.width - rw) / 2, oy = (r.height - rh) / 2;
-    const cx = (pos.clientX - r.left - ox) / scale, cy = (pos.clientY - r.top - oy) / scale;
-    if (cx < 0 || cx > cw || cy < 0 || cy > ch) return false;
-    const ia = this.state.image.naturalWidth / this.state.image.naturalHeight;
-    const s = this.state.selectedSize;
-    const nr = this.state.rotation % 180 !== 0;
-    const tw = nr ? s.heightCm : s.widthCm, th = nr ? s.widthCm : s.heightCm;
-    const ta = tw / th;
-    let iw, ih;
-    if (ia > ta) { iw = cw; ih = cw / ia; } else { ih = ch; iw = ch * ia; }
-    const zf = this.state.zoom / 100; iw *= zf; ih *= zf;
-    const ddx = (cw - iw) / 2, ddy = (ch - ih) / 2;
-    return cx >= ddx && cx <= ddx + iw && cy >= ddy && cy <= ddy + ih;
-  }
-
   // ===================== 触摸手势 =====================
   handleTouchStart(e) {
     if (e.touches.length >= 2) {
-      if (!this.isTouchOnImage(e.touches[0]) || !this.isTouchOnImage(e.touches[1])) return;
       e.preventDefault();
       this.state.isPinching = true;
       this.state.pinchStartDist = this.getTouchDistance(e);
@@ -350,8 +305,8 @@ export class App {
       const clamped = Math.max(ZOOM_RANGE.min, Math.min(ZOOM_RANGE.max, nz));
       this.state.zoom = clamped;
       if (this.activeTool === 'adjust') {
-        const sZoom = this.els.sheetBody.querySelector('#sZoomSlider');
-        const vZoom = this.els.sheetBody.querySelector('#sZoomVal');
+        const sZoom = this.els.toolContentInner.querySelector('#sZoomSlider');
+        const vZoom = this.els.toolContentInner.querySelector('#sZoomVal');
         if (sZoom) { sZoom.value = clamped; vZoom.textContent = clamped + '%'; }
       }
       this.updateInfoBar();
@@ -369,7 +324,7 @@ export class App {
   handleTouchEnd(e) {
     if (this.state.isPinching) { this.state.isPinching = false; this.endDrag(); return; }
     const elapsed = Date.now() - this.state.touchStartTime;
-    if (!this.state.touchMoved && elapsed < 300 && this.state.image && !this.isSheetOpen()) this.openFullscreenPreview(e);
+    if (!this.state.touchMoved && elapsed < 300 && this.state.image) this.openFullscreenPreview(e);
     this.endDrag();
   }
 
@@ -391,6 +346,10 @@ export class App {
 
       this.els.uploadArea.style.display = 'none';
       this.els.editorArea.style.display = 'flex';
+      // 默认展开尺寸面板
+      this.activeTool = 'size';
+      this.els.toolBtns.forEach(b => b.classList.toggle('active', b.dataset.tool === 'size'));
+      this.renderToolContent('size');
       this.updateInfoBar();
       this.hideLoading();
       this.renderPreview();
@@ -398,7 +357,6 @@ export class App {
     } catch (err) {
       this.hideLoading();
       this.showToast('图片加载失败，请重试');
-      console.error('图片加载失败:', err);
     }
   }
 
@@ -409,7 +367,6 @@ export class App {
     this.state.frameEnabled = false;
     this.state.frameImages = {};
     this.state.currentFrameKey = null;
-    this.closeSheet();
     this.els.uploadArea.style.display = 'flex';
     this.els.editorArea.style.display = 'none';
     this.els.fileInput.value = '';
@@ -425,7 +382,7 @@ export class App {
     this.showToast('已重置');
   }
 
-  // ===================== 预览渲染 =====================
+  // ===================== 渲染 =====================
   scheduleRender() {
     if (this.renderTimer) cancelAnimationFrame(this.renderTimer);
     this.els.previewCanvas.classList.add('updating');
@@ -445,13 +402,13 @@ export class App {
     const aspect = cmW / cmH;
     let pvw, pvh;
     if (wrapperW / wrapperH > aspect) {
-      pvh = Math.round(wrapperH * 0.92);
+      pvh = Math.round(wrapperH * 0.94);
       pvw = Math.round(pvh * aspect);
     } else {
-      pvw = Math.round(wrapperW * 0.92);
+      pvw = Math.round(wrapperW * 0.94);
       pvh = Math.round(pvw / aspect);
     }
-    const MAX_PREV = 900;
+    const MAX_PREV = 1000;
     if (pvw > MAX_PREV) { pvw = MAX_PREV; pvh = Math.round(pvw / aspect); }
     if (pvh > MAX_PREV) { pvh = MAX_PREV; pvw = Math.round(pvh * aspect); }
 
@@ -459,11 +416,8 @@ export class App {
     pc.width = pvw;
     pc.height = pvh;
     renderImage(pc.getContext('2d'), this.state.image, pvw, pvh, {
-      zoom: this.state.zoom,
-      offsetX: 0,
-      offsetY: 0,
-      rotation: this.state.rotation,
-      fillColor: this.state.fillColor,
+      zoom: this.state.zoom, offsetX: 0, offsetY: 0,
+      rotation: this.state.rotation, fillColor: this.state.fillColor,
     });
 
     if (this.state.frameEnabled) {
@@ -526,7 +480,7 @@ export class App {
     const dataUrl = displayCanvas.toDataURL('image/png');
 
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.93);display:flex;align-items:center;justify-content:center;z-index:99998;padding:16px;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);touch-action:none;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(6,8,18,0.95);display:flex;align-items:center;justify-content:center;z-index:99998;padding:16px;backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);touch-action:none;';
     overlay.onclick = (e) => { if (e.target === overlay) document.body.removeChild(overlay); };
 
     const img = document.createElement('img');
@@ -535,7 +489,7 @@ export class App {
 
     const closeBtn = document.createElement('button');
     closeBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    closeBtn.style.cssText = 'position:fixed;top:20px;right:20px;width:40px;height:40px;border:none;border-radius:50%;background:rgba(255,255,255,0.06);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;';
+    closeBtn.style.cssText = 'position:fixed;top:20px;right:20px;width:40px;height:40px;border:none;border-radius:50%;background:rgba(255,255,255,0.05);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;';
 
     overlay.appendChild(img);
     overlay.appendChild(closeBtn);
@@ -557,11 +511,9 @@ export class App {
       const imgH = this.state.image.naturalHeight;
       let pxW, pxH;
       if (imgW / imgH > targetAspect) {
-        pxW = Math.round(imgW);
-        pxH = Math.round(imgW / targetAspect);
+        pxW = Math.round(imgW); pxH = Math.round(imgW / targetAspect);
       } else {
-        pxH = Math.round(imgH);
-        pxW = Math.round(imgH * targetAspect);
+        pxH = Math.round(imgH); pxW = Math.round(imgH * targetAspect);
       }
       const multiplier = mode > 0 ? mode : 1;
       pxW = Math.round(pxW * multiplier);
@@ -584,7 +536,6 @@ export class App {
       this.showToast('图片已生成，开始下载');
     } catch (err) {
       this.showToast('下载失败，请重试');
-      console.error('下载失败:', err);
     } finally {
       this.els.downloadBtn.disabled = false;
       this.els.downloadBtn.style.opacity = '1';
@@ -597,8 +548,8 @@ export class App {
     const nr = this.state.rotation % 180 !== 0;
     const cmW = nr ? size.heightCm : size.widthCm;
     const cmH = nr ? size.widthCm : size.heightCm;
-    const frameText = this.state.frameEnabled ? ' · 相框已开启' : '';
-    this.els.infoText.textContent = `${size.name} · ${cmW}×${cmH}cm · 缩放${this.state.zoom}%${frameText}`;
+    const ft = this.state.frameEnabled ? ' · 相框已开启' : '';
+    this.els.infoText.textContent = `${size.name} · ${cmW}×${cmH}cm · 缩放${this.state.zoom}%${ft}`;
   }
 
   // ===================== 相框 =====================
@@ -620,15 +571,14 @@ export class App {
       const infoEl = document.getElementById('sFrameInfo');
       if (infoEl) {
         const sizeNum = frameKey.split('_')[0];
-        const orientLabel = frameKey.endsWith('_h') ? '横版' : '竖版';
-        infoEl.textContent = `当前：${sizeNum}片 ${orientLabel}相框`;
+        infoEl.textContent = `当前：${sizeNum}片 ${isLandscape ? '横版' : '竖版'}相框`;
       }
     } catch (e) {
       console.warn('相框预加载失败:', e);
     }
   }
 
-  // ===================== 工具UI =====================
+  // ===================== UI 工具 =====================
   showLoading() {
     this.hideLoading();
     const overlay = document.createElement('div');
