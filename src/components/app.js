@@ -63,12 +63,11 @@ export class App {
     this.els.reUploadBtn.addEventListener('click', () => this.resetToUpload());
     this.els.downloadBtn.addEventListener('click', () => this.handleDownload());
 
-    // 相框开关（预览区右上角）—— 修复移动端响应
+    // 相框开关（预览区右上角）
     this.els.frameToggle.addEventListener('change', async (e) => {
       this.state.frameEnabled = e.target.checked;
       if (this.state.frameEnabled) {
         await this.preloadCurrentFrame();
-        // 加载完成后确保强刷一次渲染
         this.state.puzzleCanvas = null;
       }
       this.updateInfoBar();

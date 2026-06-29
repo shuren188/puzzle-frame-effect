@@ -69,11 +69,13 @@
       <!-- 信息条 -->
       <div class="info-bar"><span id="infoText">35片 · 10×15cm · 缩放100%</span></div>
 
-      <!-- 预览区 -->
-      <div class="canvas-wrap" id="canvasWrapper">
-        <canvas id="previewCanvas"></canvas>
-        <div class="drag-hint" id="dragHint">↕ 拖拽调整位置</div>
-        <!-- 相框开关（预览区右上角） -->
+      <!-- 预览区（包裹层用于相框开关定位） -->
+      <div class="preview-area" id="previewArea">
+        <div class="canvas-wrap" id="canvasWrapper">
+          <canvas id="previewCanvas"></canvas>
+          <div class="drag-hint" id="dragHint">↕ 拖拽调整位置</div>
+        </div>
+        <!-- 相框开关（在canvas-wrap外部，避免touch-action:none影响） -->
         <div class="frame-switch" id="frameSwitch">
           <span class="frame-switch-label">添加相框</span>
           <label class="switch">
