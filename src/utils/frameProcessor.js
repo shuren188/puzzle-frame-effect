@@ -34,18 +34,18 @@ export const FRAME_CONFIG = {
 /** 尺寸索引 → 名称映射 */
 const SIZE_NAMES = ['35', '70', '120', '200', '300'];
 
-/** 相框PNG路径 */
+/** 相框PNG路径（已压缩为WebP，体积缩小97%） */
 const FRAME_PATHS = {
-  '35_h': 'frames/h/35.png',
-  '35_v': 'frames/v/35.png',
-  '70_h': 'frames/h/70.png',
-  '70_v': 'frames/v/70.png',
-  '120_h': 'frames/h/120.png',
-  '120_v': 'frames/v/120.png',
-  '200_h': 'frames/h/200.png',
-  '200_v': 'frames/v/200.png',
-  '300_h': 'frames/h/300.png',
-  '300_v': 'frames/v/300.png',
+  '35_h': 'frames/h/35.webp',
+  '35_v': 'frames/v/35.webp',
+  '70_h': 'frames/h/70.webp',
+  '70_v': 'frames/v/70.webp',
+  '120_h': 'frames/h/120.webp',
+  '120_v': 'frames/v/120.webp',
+  '200_h': 'frames/h/200.webp',
+  '200_v': 'frames/v/200.webp',
+  '300_h': 'frames/h/300.webp',
+  '300_v': 'frames/v/300.webp',
 };
 
 /** 已加载相框图片缓存 */

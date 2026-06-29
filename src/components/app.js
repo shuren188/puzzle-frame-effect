@@ -63,19 +63,19 @@ export class App {
     this.els.reUploadBtn.addEventListener('click', () => this.resetToUpload());
     this.els.downloadBtn.addEventListener('click', () => this.handleDownload());
 
-    // 相框开关（预览区右上角）—— 不阻塞UI，不无效缓存
+    // 相框开关（预览区右上角）—— 不重建拼图基座，只切换显示层
     this.els.frameToggle.addEventListener('change', (e) => {
       this.state.frameEnabled = e.target.checked;
       if (this.state.frameEnabled) {
-        // 异步加载相框，加载完成后自动叠加（不阻塞当前渲染）
         this.preloadCurrentFrame().then(() => {
-          if (this.state.frameEnabled && this.state.currentFrameKey) {
-            this.scheduleRender();
+          if (this.state.frameEnabled) {
+            this.refreshDisplay();
           }
         });
       }
       this.updateInfoBar();
-      this.scheduleRender();
+      // 立即刷新显示（如果相框已缓存则瞬间显示；未缓存则先显示无框）
+      this.refreshDisplay();
     });
 
     // 底部工具栏按钮
@@ -332,7 +332,7 @@ export class App {
       this.renderToolContent('size');
       this.updateInfoBar();
       this.hideLoading();
-      this.renderPreview();
+      this.scheduleRender();
       // 后台预加载所有相框（不阻塞UI）
       this.preloadAllFrames();
     } catch (err) {
@@ -363,20 +363,28 @@ export class App {
     this.showToast('已重置');
   }
 
-  // ===================== 渲染 =====================
+  // ===================== 分层渲染 =====================
+  // puzzleCanvas (offscreen) — 拼图结果缓存，仅参数变更时重建
+  // previewCanvas (onscreen)  — 显示画布
+
+  /** 重建拼图基座（参数变更时调用：zoom/rotation/size/color） */
   scheduleRender() {
     if (this.renderTimer) cancelAnimationFrame(this.renderTimer);
     this.els.previewCanvas.classList.add('updating');
-    this.renderTimer = requestAnimationFrame(() => this.renderPreview());
+    this.renderTimer = requestAnimationFrame(() => {
+      this.rebuildPuzzle();        // 重建拼图基座
+      this.refreshDisplay();       // 刷新显示
+      this.els.previewCanvas.classList.remove('updating');
+    });
   }
 
-  renderPreview() {
+  /** 重建 puzzleCanvas（offscreen缓存） */
+  rebuildPuzzle() {
     if (!this.state.image) return;
     const size = this.state.selectedSize;
     const nr = this.state.rotation % 180 !== 0;
     const cmW = nr ? size.heightCm : size.widthCm;
     const cmH = nr ? size.widthCm : size.heightCm;
-
     const wrapper = this.els.canvasWrapper;
     const wrapperW = wrapper.clientWidth;
     const wrapperH = wrapper.clientHeight;
@@ -389,7 +397,7 @@ export class App {
       pvw = Math.round(wrapperW * 0.95);
       pvh = Math.round(pvw / aspect);
     }
-    const MAX_PREV = 1000;
+    const MAX_PREV = window.innerWidth < 480 ? 600 : 1000;
     if (pvw > MAX_PREV) { pvw = MAX_PREV; pvh = Math.round(pvw / aspect); }
     if (pvh > MAX_PREV) { pvh = MAX_PREV; pvw = Math.round(pvh * aspect); }
 
@@ -400,56 +408,58 @@ export class App {
       zoom: this.state.zoom, offsetX: 0, offsetY: 0,
       rotation: this.state.rotation, fillColor: this.state.fillColor,
     });
-
-    if (this.state.frameEnabled) {
-      this.renderFramePreview(pc, wrapperW, wrapperH);
-    } else {
-      this.renderNormalPreview(pc);
-    }
-    this.els.previewCanvas.classList.remove('updating');
+    this._baseDim = { w: pvw, h: pvh };
   }
 
-  renderNormalPreview(pc) {
+  /** 刷新显示：将 puzzleCanvas 绘制到 previewCanvas，叠加相框 */
+  refreshDisplay() {
+    if (!this.state.image || !this._baseDim) return;
     const canvas = this.els.previewCanvas;
     const ctx = canvas.getContext('2d');
+    const pc = this.state.puzzleCanvas;
+    const { w: pvw, h: pvh } = this._baseDim;
+
+    if (this.state.frameEnabled) {
+      // 相框模式：按相框尺寸设定canvas
+      const frameKey = this.state.currentFrameKey;
+      const frameImg = this.state.frameImages[frameKey];
+      if (!frameImg || !frameKey) {
+        // 相框还没加载好，先显示无框
+        this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
+        return;
+      }
+      const cfg = FRAME_CONFIG[frameKey];
+      const wrapper = this.els.canvasWrapper;
+      const wrapW = wrapper.clientWidth;
+      const wrapH = wrapper.clientHeight;
+      const frameAspect = cfg.frameWidth / cfg.frameHeight;
+      const margin = 0.94;
+      let dsW, dsH;
+      if ((wrapW * margin) / (wrapH * margin) > frameAspect) {
+        dsH = Math.round(wrapH * margin); dsW = Math.round(dsH * frameAspect);
+      } else {
+        dsW = Math.round(wrapW * margin); dsH = Math.round(dsW / frameAspect);
+      }
+      canvas.classList.add('frame-active');
+      canvas.width = dsW;
+      canvas.height = dsH;
+      canvas.style.width = '';
+      canvas.style.height = '';
+      renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
+    } else {
+      // 无框模式
+      this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
+    }
+  }
+
+  /** 仅绘制拼图基座（无相框） */
+  drawBaseOnly(canvas, ctx, pc, pvw, pvh) {
     canvas.classList.remove('frame-active');
     canvas.style.width = '';
     canvas.style.height = '';
-    canvas.width = pc.width;
-    canvas.height = pc.height;
+    canvas.width = pvw;
+    canvas.height = pvh;
     ctx.drawImage(pc, 0, 0);
-  }
-
-  renderFramePreview(pc, wrapW, wrapH) {
-    const frameKey = this.state.currentFrameKey;
-    const frameImg = this.state.frameImages[frameKey];
-    if (!frameImg || !frameKey) { this.renderNormalPreview(pc); return; }
-
-    // 计算相框显示尺寸——填满预览区同时保持相框比例
-    const cfg = FRAME_CONFIG[frameKey];
-    const frameAspect = cfg.frameWidth / cfg.frameHeight;
-    const margin = 0.94;
-    const availW = wrapW * margin;
-    const availH = wrapH * margin;
-
-    let dsW, dsH;
-    if (availW / availH > frameAspect) {
-      // 预览区相对更宽：相框填满高度
-      dsH = Math.round(availH);
-      dsW = Math.round(dsH * frameAspect);
-    } else {
-      // 预览区相对更高：相框填满宽度
-      dsW = Math.round(availW);
-      dsH = Math.round(dsW / frameAspect);
-    }
-
-    // 添加frame-active标记让CSS控制canvas尺寸
-    this.els.previewCanvas.classList.add('frame-active');
-
-    const canvas = this.els.previewCanvas;
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
   }
 
   // ===================== 全屏预览 =====================
