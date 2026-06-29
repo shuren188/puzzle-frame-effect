@@ -83,9 +83,7 @@ export class App {
     document.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
     document.addEventListener('mouseup', () => this.endDrag());
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
-    this.els.canvasWrapper.addEventListener('click', (e) => {
-      if (this.state.image && !this.state.isDragging && !e.target.closest('.frame-switch')) this.openFullscreenPreview(e);
-    });
+    // 取消点击预览图放大功能
 
     // 默认展开尺寸
     this.renderToolContent('size');
@@ -300,8 +298,6 @@ export class App {
 
   handleTouchEnd(e) {
     if (this.state.isPinching) { this.state.isPinching = false; this.endDrag(); return; }
-    const elapsed = Date.now() - this.state.touchStartTime;
-    if (!this.state.touchMoved && elapsed < 300 && this.state.image) this.openFullscreenPreview(e);
     this.endDrag();
   }
 
@@ -449,49 +445,6 @@ export class App {
   }
 
   // ===================== 全屏预览 =====================
-  openFullscreenPreview() {
-    if (!this.state.image) return;
-    const s = this.state.selectedSize;
-    const nr = this.state.rotation % 180 !== 0;
-    const cmW = nr ? s.heightCm : s.widthCm, cmH = nr ? s.widthCm : s.heightCm;
-    const ta = cmW / cmH;
-    let pvw = 480, pvh = Math.round(pvw / ta);
-    if (pvh > 680) { pvh = 680; pvw = Math.round(pvh * ta); }
-
-    const puzzleCanvas = document.createElement('canvas');
-    const pcCtx = puzzleCanvas.getContext('2d');
-    renderImage(pcCtx, this.state.image, pvw, pvh, {
-      zoom: this.state.zoom, offsetX: 0, offsetY: 0,
-      rotation: this.state.rotation, fillColor: this.state.fillColor,
-    });
-
-    let displayCanvas = puzzleCanvas;
-    if (this.state.frameEnabled) {
-      const frameKey = this.state.currentFrameKey;
-      const frameImg = this.state.frameImages[frameKey];
-      if (frameImg && frameKey) {
-        const fsCanvas = document.createElement('canvas');
-        const fsCtx = fsCanvas.getContext('2d');
-        renderFrame(fsCtx, puzzleCanvas, frameKey, frameImg);
-        displayCanvas = fsCanvas;
-      }
-    }
-    const dataUrl = displayCanvas.toDataURL('image/png');
-
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(6,8,18,0.95);display:flex;align-items:center;justify-content:center;z-index:99998;padding:16px;backdrop-filter:blur(30px);touch-action:none;';
-    overlay.onclick = (e) => { if (e.target === overlay) document.body.removeChild(overlay); };
-    const img = document.createElement('img');
-    img.src = dataUrl;
-    img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;';
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    closeBtn.style.cssText = 'position:fixed;top:20px;right:20px;width:40px;height:40px;border:none;border-radius:50%;background:rgba(255,255,255,0.05);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;';
-    overlay.appendChild(img);
-    overlay.appendChild(closeBtn);
-    document.body.appendChild(overlay);
-  }
-
   // ===================== 下载 =====================
   async handleDownload() {
     if (!this.state.image) return;
