@@ -2,7 +2,7 @@ import { SIZES, QUALITIES, PRESET_COLORS, DEFAULTS, ZOOM_RANGE } from '../consta
 import { renderImage, loadImage } from '../utils/imageProcessor.js';
 import { downloadImage, getOutputFilename } from '../utils/download.js';
 import { ColorPicker } from './ColorPicker.js';
-import { renderFrame, loadFrameImage, getFrameKey, getFrameDisplaySize } from '../utils/frameProcessor.js';
+import { renderFrame, loadFrameImage, getFrameKey, getFrameDisplaySize, FRAME_CONFIG } from '../utils/frameProcessor.js';
 
 const PINCH_SENSITIVITY = 0.45;
 
@@ -408,6 +408,7 @@ export class App {
   renderNormalPreview(pc) {
     const canvas = this.els.previewCanvas;
     const ctx = canvas.getContext('2d');
+    canvas.classList.remove('frame-active');
     canvas.style.width = '';
     canvas.style.height = '';
     canvas.width = pc.width;
@@ -420,26 +421,31 @@ export class App {
     const frameImg = this.state.frameImages[frameKey];
     if (!frameImg || !frameKey) { this.renderNormalPreview(pc); return; }
 
-    // 根据预览区实际可用空间计算相框显示尺寸（占满预览框）
-    const config = this.els.toolContentInner.offsetParent ?
-      { w: wrapW, h: wrapH } :
-      { w: this.els.canvasWrapper.clientWidth, h: this.els.canvasWrapper.clientHeight };
+    // 计算相框显示尺寸——填满预览区同时保持相框比例
+    const cfg = FRAME_CONFIG[frameKey];
+    const frameAspect = cfg.frameWidth / cfg.frameHeight;
+    const margin = 0.94;
+    const availW = wrapW * margin;
+    const availH = wrapH * margin;
 
-    // 使用预览区高度的 95% 作为基准
-    const targetH = Math.round(wrapH * 0.95);
-    const ds = getFrameDisplaySize(frameKey, targetH);
-
-    // 确保不超过预览区宽度
-    if (ds.width > wrapW * 0.95) {
-      const ratio = (wrapW * 0.95) / ds.width;
-      ds.width = Math.round(ds.width * ratio);
-      ds.height = Math.round(ds.height * ratio);
+    let dsW, dsH;
+    if (availW / availH > frameAspect) {
+      // 预览区相对更宽：相框填满高度
+      dsH = Math.round(availH);
+      dsW = Math.round(dsH * frameAspect);
+    } else {
+      // 预览区相对更高：相框填满宽度
+      dsW = Math.round(availW);
+      dsH = Math.round(dsW / frameAspect);
     }
+
+    // 添加frame-active标记让CSS控制canvas尺寸
+    this.els.previewCanvas.classList.add('frame-active');
 
     const canvas = this.els.previewCanvas;
     const ctx = canvas.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    renderFrame(ctx, pc, frameKey, frameImg, ds.width, ds.height);
+    renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
   }
 
   // ===================== 全屏预览 =====================

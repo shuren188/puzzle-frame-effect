@@ -149,8 +149,9 @@ export function renderFrame(ctx, puzzleCanvas, sizeKey, frameImg, displayWidth, 
   // 设置Canvas尺寸（考虑DPR）
   canvas.width = Math.round(dw * dpr);
   canvas.height = Math.round(dh * dpr);
-  canvas.style.width = dw + 'px';
-  canvas.style.height = dh + 'px';
+  // 清除可能残留的内联样式，让CSS max-width/max-height控制显示大小
+  canvas.style.width = '';
+  canvas.style.height = '';
   ctx.scale(dpr, dpr);
 
   // 计算缩放比例（Bitmap Scale — 整个Bitmap统一缩放）
