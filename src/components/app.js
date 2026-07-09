@@ -3,14 +3,9 @@ import { renderImage, loadImage } from '../utils/imageProcessor.js';
 import { downloadImage, getOutputFilename } from '../utils/download.js';
 import { ColorPicker } from './ColorPicker.js';
 import { renderFrame, loadFrameImage, getFrameKey, getFrameDisplaySize, FRAME_CONFIG } from '../utils/frameProcessor.js';
-import { renderTexts, createDefaultText, genTextId, measureText } from '../utils/textProcessor.js';
+import { renderTexts, createDefaultText, genTextId } from '../utils/textProcessor.js';
 
 const PINCH_SENSITIVITY = 0.45;
-const TEXT_FONTS = [
-  { id: 'NotoSansSC', name: '思源黑体', style: '黑体' },
-  { id: 'SiYuanHei', name: '思源黑体旧字形', style: '古典黑体' },
-  { id: 'QingChaKaiTi', name: '清茶楷体', style: '文艺楷体' },
-];
 
 export class App {
   constructor() {
@@ -28,6 +23,8 @@ export class App {
       touchStartTime: 0, touchMoved: false,
       frameEnabled: false, frameImages: {}, currentFrameKey: null, puzzleCanvas: null,
       texts: [], editText: null, draggingText: null,
+      // 双指缩放文字：记录pinch开始时选中的文字
+      pinchTextId: null, pinchTextStartSize: 36,
     };
     this.renderTimer = null;
     this.cacheDOM();
@@ -54,7 +51,6 @@ export class App {
   }
 
   init() {
-    // 上传
     this.els.uploadPlaceholder.addEventListener('click', () => this.els.fileInput.click());
     this.els.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
     this.els.uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); this.els.uploadPlaceholder.classList.add('drag-over'); });
@@ -65,54 +61,41 @@ export class App {
       if (file && file.type.startsWith('image/')) this.processFile(file);
     });
 
-    // 顶栏
     this.els.resetBtn.addEventListener('click', () => this.resetImage());
     this.els.reUploadBtn.addEventListener('click', () => this.resetToUpload());
     this.els.downloadBtn.addEventListener('click', () => this.handleDownload());
 
-    // 相框开关（预览区右上角）—— 不重建拼图基座，只切换显示层
+    // 相框开关
     this.els.frameToggle.addEventListener('change', (e) => {
       this.state.frameEnabled = e.target.checked;
       if (this.state.frameEnabled) {
         this.preloadCurrentFrame().then(() => {
-          if (this.state.frameEnabled) {
-            this.refreshDisplay();
-          }
+          if (this.state.frameEnabled) this.refreshDisplay();
         });
       }
       this.updateInfoBar();
-      // 立即刷新显示（如果相框已缓存则瞬间显示；未缓存则先显示无框）
       this.refreshDisplay();
     });
 
-    // 底部工具栏按钮
     this.els.toolBtns.forEach(btn => {
       btn.addEventListener('click', () => this.switchTool(btn.dataset.tool));
     });
 
-    // 触摸
     this.els.canvasWrapper.addEventListener('mousedown', (e) => this.startDrag(e));
     this.els.canvasWrapper.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
     document.addEventListener('mousemove', (e) => this.onDrag(e));
     document.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
     document.addEventListener('mouseup', () => this.endDrag());
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
-    // 取消点击预览图放大功能
 
-    // 默认展开尺寸
     this.renderToolContent('size');
-
-    // 预加载自定义字体
     this.loadFonts();
   }
 
   async loadFonts() {
     try {
-      const fontNames = ['NotoSansSC', 'SiYuanHei', 'QingChaKaiTi'];
-      await Promise.allSettled(fontNames.map(name =>
-        document.fonts.load(`16px "${name}"`).catch(() => {})
-      ));
-    } catch (e) { /* 字体加载失败不影响核心功能 */ }
+      await document.fonts.load('16px "SiYuanHei"');
+    } catch (e) {}
   }
 
   // ===================== 工具切换 =====================
@@ -152,12 +135,7 @@ export class App {
   renderSizePanel(container) {
     container.innerHTML = `
       <div class="size-scroll">
-        ${SIZES.map((s, i) => `
-          <button class="size-btn${i === SIZES.indexOf(this.state.selectedSize) ? ' active' : ''}" data-index="${i}">
-            <span class="size-label">${s.name}</span>
-            <span class="size-dim">${s.label}</span>
-          </button>
-        `).join('')}
+        ${SIZES.map((s, i) => `<button class="size-btn${i === SIZES.indexOf(this.state.selectedSize) ? ' active' : ''}" data-index="${i}"><span class="size-label">${s.name}</span><span class="size-dim">${s.label}</span></button>`).join('')}
       </div>
     `;
     container.querySelector('.size-scroll').addEventListener('click', (e) => {
@@ -174,14 +152,7 @@ export class App {
 
   renderQualityPanel(container) {
     container.innerHTML = `
-      <div class="quality-group">
-        ${QUALITIES.map((q) => `
-          <button class="quality-btn${q.scale === this.state.quality ? ' active' : ''}" data-scale="${q.scale}">
-            <span class="q-name">${q.name}</span>
-            <span class="q-dpi">${q.sub}</span>
-          </button>
-        `).join('')}
-      </div>
+      <div class="quality-group">${QUALITIES.map((q) => `<button class="quality-btn${q.scale === this.state.quality ? ' active' : ''}" data-scale="${q.scale}"><span class="q-name">${q.name}</span><span class="q-dpi">${q.sub}</span></button>`).join('')}</div>
     `;
     container.querySelector('.quality-group').addEventListener('click', (e) => {
       const btn = e.target.closest('.quality-btn');
@@ -189,68 +160,48 @@ export class App {
       container.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       this.state.quality = parseInt(btn.dataset.scale);
-      this.scheduleRender();
     });
   }
 
   renderAdjustPanel(container) {
     container.innerHTML = `
-      <div class="slider-group">
-        <label class="slider-label">
-          <span>缩放比例</span>
-          <span class="slider-value" id="sZoomVal">${this.state.zoom}%</span>
-        </label>
-        <input type="range" class="slider" id="sZoomSlider" min="${ZOOM_RANGE.min}" max="${ZOOM_RANGE.max}" value="${this.state.zoom}" step="${ZOOM_RANGE.step}" />
-      </div>
-      <div class="rotate-group">
-        <button class="rotate-btn" id="sRotateLeft">↺ 左转90°</button>
-        <button class="rotate-btn" id="sRotateRight">↻ 右转90°</button>
-      </div>
+      <div class="slider-group"><label class="slider-label"><span>缩放比例</span><span class="slider-value" id="sZoomVal">${this.state.zoom}%</span></label><input type="range" class="slider" id="sZoomSlider" min="${ZOOM_RANGE.min}" max="${ZOOM_RANGE.max}" value="${this.state.zoom}" step="${ZOOM_RANGE.step}" /></div>
+      <div class="rotate-group"><button class="rotate-btn" id="sRotateLeft">↺ 左转90°</button><button class="rotate-btn" id="sRotateRight">↻ 右转90°</button></div>
     `;
     container.querySelector('#sZoomSlider').addEventListener('input', () => {
       const v = parseInt(container.querySelector('#sZoomSlider').value);
-      this.state.zoom = v;
-      container.querySelector('#sZoomVal').textContent = v + '%';
-      this.updateInfoBar();
-      this.scheduleRender();
+      this.state.zoom = v; container.querySelector('#sZoomVal').textContent = v + '%';
+      this.updateInfoBar(); this.scheduleRender();
     });
     container.querySelector('#sRotateLeft').addEventListener('click', () => {
       this.state.rotation = (this.state.rotation - 90 + 360) % 360;
       if (this.state.frameEnabled) this.preloadCurrentFrame();
-      this.updateInfoBar();
-      this.scheduleRender();
+      this.updateInfoBar(); this.scheduleRender();
     });
     container.querySelector('#sRotateRight').addEventListener('click', () => {
       this.state.rotation = (this.state.rotation + 90) % 360;
       if (this.state.frameEnabled) this.preloadCurrentFrame();
-      this.updateInfoBar();
-      this.scheduleRender();
+      this.updateInfoBar(); this.scheduleRender();
     });
   }
 
   renderColorPanel(container) {
-    const btns = PRESET_COLORS.map((c) =>
-      `<button class="color-btn${c.hex === this.state.fillColor ? ' active' : ''}" data-color="${c.hex}" style="background:${c.hex}" title="${c.name}"></button>`
-    ).join('');
+    const btns = PRESET_COLORS.map((c) => `<button class="color-btn${c.hex === this.state.fillColor ? ' active' : ''}" data-color="${c.hex}" style="background:${c.hex}" title="${c.name}"></button>`).join('');
     container.innerHTML = `<div class="color-grid">${btns}<button class="color-btn custom" id="sCustomColor">+</button></div>`;
     container.querySelector('.color-grid').addEventListener('click', (e) => {
       const btn = e.target.closest('.color-btn');
       if (!btn) return;
-      if (btn.id === 'sCustomColor') {
-        new ColorPicker({
-          initialColor: this.state.fillColor,
-          onConfirm: (color) => this.setActiveColor(color),
-        });
-        return;
-      }
+      if (btn.id === 'sCustomColor') { new ColorPicker({ initialColor: this.state.fillColor, onConfirm: (color) => this.setActiveColor(color) }); return; }
       this.setActiveColor(btn.dataset.color);
     });
   }
 
   setActiveColor(color) {
     this.state.fillColor = color;
-    this.els.toolContentInner.querySelectorAll('.color-btn:not(.custom)').forEach(b => {
-      b.classList.toggle('active', b.dataset.color.toLowerCase() === color.toLowerCase());
+    // sync all color btn instances (both fill panel and text panel)
+    document.querySelectorAll('.color-btn:not(.custom)').forEach(b => {
+      const match = b.dataset.color && b.dataset.color.toLowerCase() === color.toLowerCase();
+      b.classList.toggle('active', match);
     });
     this.scheduleRender();
   }
@@ -260,18 +211,10 @@ export class App {
     const edit = this.state.editText || createDefaultText();
     this.state.editText = edit;
 
-    // 预填内容：如果上次编辑过文字
     container.innerHTML = `
       <div class="text-editor">
         <input class="text-input" id="textContent" type="text" value="${edit.content.replace(/"/g,'&quot;')}" placeholder="输入文字内容" maxlength="50" />
-        <div class="text-font-row">
-          ${TEXT_FONTS.map(f => '<button class="text-font-btn' + (f.id === edit.font ? ' active' : '') + '" data-font="' + f.id + '"><span class="text-font-name">' + f.name + '</span><span class="text-font-style">' + f.style + '</span></button>').join('')}
-        </div>
-        <div class="text-slider-row">
-          <span class="text-slider-label">大小</span>
-          <input type="range" class="slider" id="textSize" min="16" max="120" value="${edit.fontSize}" />
-          <span class="slider-value" id="textSizeVal">${edit.fontSize}</span>
-        </div>
+        <div class="text-info-row">思源黑体 · 双指缩放调大小 · 拖拽移动位置</div>
         <div class="text-slider-row">
           <span class="text-slider-label">旋转</span>
           <input type="range" class="slider" id="textRotate" min="-180" max="180" value="${edit.rotation}" />
@@ -292,37 +235,33 @@ export class App {
           <button class="text-btn-primary" id="textAddBtn">${this.state.texts.find(t => t.id === edit.id) ? '更新文字' : '添加文字'}</button>
           <button class="text-btn-danger" id="textDelBtn" style="${this.state.texts.length ? '' : 'display:none'}">删除</button>
         </div>
-        <div class="text-list" id="textList">${this.state.texts.map(t => '<div class="text-list-item' + (edit && edit.id === t.id ? ' active' : '') + '" data-tid="' + t.id + '"><span class="text-list-preview">' + t.content + '</span><span class="text-list-font">' + (TEXT_FONTS.find(f=>f.id===t.font)||{name:t.font}).name + '</span><button class="text-list-del" data-tid="' + t.id + '">✕</button></div>').join('')}</div>
+        <div class="text-list" id="textList">${this.state.texts.map(t => '<div class="text-list-item' + (edit && edit.id === t.id ? ' active' : '') + '" data-tid="' + t.id + '"><span class="text-list-preview">' + t.content + '</span><button class="text-list-del" data-tid="' + t.id + '">✕</button></div>').join('')}</div>
       </div>
     `;
 
-    // 绑定事件
     container.querySelector('#textContent').addEventListener('input', (e) => {
       edit.content = e.target.value; this.state.editText = edit;
     });
-    container.querySelectorAll('.text-font-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        container.querySelectorAll('.text-font-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active'); edit.font = btn.dataset.font; this.state.editText = edit;
-      });
-    });
-    container.querySelector('#textSize').addEventListener('input', (e) => {
-      edit.fontSize = parseInt(e.target.value); container.querySelector('#textSizeVal').textContent = edit.fontSize; this.state.editText = edit;
-    });
     container.querySelector('#textRotate').addEventListener('input', (e) => {
-      edit.rotation = parseInt(e.target.value); container.querySelector('#textRotateVal').textContent = edit.rotation + '°'; this.state.editText = edit;
+      edit.rotation = parseInt(e.target.value);
+      container.querySelector('#textRotateVal').textContent = edit.rotation + '°';
+      this.state.editText = edit;
     });
     container.querySelector('.text-color-group').addEventListener('click', (e) => {
       const btn = e.target.closest('.color-btn'); if (!btn) return;
-      if (btn.id === 'textCustomColor') { new ColorPicker({ initialColor: edit.color, onConfirm: (c) => { edit.color = c; this.state.editText = edit; }}); return; }
-      container.querySelectorAll('.color-btn:not(.custom)').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active'); edit.color = btn.dataset.tc; this.state.editText = edit;
+      if (btn.id === 'textCustomColor') {
+        new ColorPicker({ initialColor: edit.color, onConfirm: (c) => { edit.color = c; this.state.editText = edit; this.syncColorBtns(c); this.refreshDisplay(); }});
+        return;
+      }
+      const c = btn.dataset.tc; edit.color = c; this.state.editText = edit;
+      this.syncColorBtns(c);
+      this.refreshDisplay();
     });
     container.querySelector('#textAddBtn').addEventListener('click', () => {
       if (!edit.content.trim()) return;
       const existing = this.state.texts.find(t => t.id === edit.id);
-      if (existing) { Object.assign(existing, { content: edit.content, font: edit.font, fontSize: edit.fontSize, color: edit.color, rotation: edit.rotation }); }
-      else { this.state.texts.push({ id: genTextId(), content: edit.content, font: edit.font, fontSize: edit.fontSize, color: edit.color, rotation: edit.rotation, x: 0.5, y: 0.5 }); }
+      if (existing) { Object.assign(existing, { content: edit.content, fontSize: edit.fontSize, color: edit.color, rotation: edit.rotation }); }
+      else { this.state.texts.push({ id: genTextId(), content: edit.content, font: 'SiYuanHei', fontSize: 36, color: edit.color, rotation: edit.rotation, x: 0.5, y: 0.5 }); }
       this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay();
     });
     container.querySelector('#textDelBtn').addEventListener('click', () => {
@@ -335,13 +274,19 @@ export class App {
     });
   }
 
+  syncColorBtns(color) {
+    document.querySelectorAll('.text-color-group .color-btn:not(.custom)').forEach(b => {
+      b.classList.toggle('active', b.dataset.tc && b.dataset.tc.toLowerCase() === color.toLowerCase());
+    });
+  }
+
   getTextAtPos(cx, cy, canvas) {
     const pcw = canvas.width; const pch = canvas.height;
     for (let i = this.state.texts.length - 1; i >= 0; i--) {
       const t = this.state.texts[i];
       const tx = t.x * pcw; const ty = t.y * pch;
       const hit = Math.max(t.fontSize * 0.8, 24);
-      if (Math.abs(cx - tx) < hit && Math.abs(cy - ty) < hit) return t;
+      if (Math.abs(cx - tx) < hit && Math.abs(cy - ty) < hit) return { text: t, index: i };
     }
     return null;
   }
@@ -352,11 +297,10 @@ export class App {
     const pt = e.touches ? e.touches[0] : e;
     const r = this.els.canvasWrapper.getBoundingClientRect();
     const cx = (pt.clientX - r.left) / r.width;
-    const cy = (pt.clientY - r.top) / r.height;
 
     // 检查是否点击到文字
     const canvas = this.els.previewCanvas;
-    const hit = this.getTextAtPos(cx * canvas.width, cy * canvas.height, canvas);
+    const hit = this.getTextAtPos(cx * canvas.width, pt.clientY * (canvas.height / r.height), canvas);
     if (hit) {
       this.state.draggingText = hit.text;
       this.state.dragStartX = pt.clientX;
@@ -376,7 +320,6 @@ export class App {
     if (!this.state.image) return;
     const pos = e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
 
-    // 文字拖拽
     if (this.state.draggingText) {
       const r = this.els.canvasWrapper.getBoundingClientRect();
       this.state.draggingText.x = (pos.x - r.left) / r.width;
@@ -400,22 +343,34 @@ export class App {
     }
   }
 
-  endDrag() {
-    if (this.state.isDragging) {
-      this.state.isDragging = false;
-      this.els.canvasWrapper.classList.remove('dragging');
-    }
-  }
-
   getTouchDistance(e) {
     const dx = e.touches[0].clientX - e.touches[1].clientX;
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     return Math.sqrt(dx * dx + dy * dy);
   }
 
+  /** 找到第一个手指位置对应的文字 */
+  findTextUnderFinger(pt) {
+    const r = this.els.canvasWrapper.getBoundingClientRect();
+    const cw = this.els.previewCanvas.width;
+    const ch = this.els.previewCanvas.height;
+    const cx = ((pt.clientX - r.left) / r.width) * cw;
+    const cy = ((pt.clientY - r.top) / r.height) * ch;
+    const hit = this.getTextAtPos(cx, cy, this.els.previewCanvas);
+    return hit;
+  }
+
   handleTouchStart(e) {
     if (e.touches.length >= 2) {
       e.preventDefault();
+      // 检测手指下方是否有文字（用第一个手指位置）
+      const hit = this.findTextUnderFinger(e.touches[0]);
+      if (hit) {
+        this.state.pinchTextId = hit.text.id;
+        this.state.pinchTextStartSize = hit.text.fontSize;
+      } else {
+        this.state.pinchTextId = null;
+      }
       this.state.isPinching = true;
       this.state.pinchStartDist = this.getTouchDistance(e);
       this.state.pinchStartZoom = this.state.zoom;
@@ -423,6 +378,7 @@ export class App {
       this.els.canvasWrapper.classList.remove('dragging');
     } else if (e.touches.length === 1) {
       this.state.isPinching = false;
+      this.state.pinchTextId = null;
       this.state.touchStartTime = Date.now();
       this.state.touchMoved = false;
       this.startDrag(e);
@@ -433,16 +389,30 @@ export class App {
     if (this.state.isPinching && e.touches.length >= 2) {
       e.preventDefault();
       const dist = this.getTouchDistance(e);
-      const nz = Math.round(this.state.pinchStartZoom * (1 + ((dist - this.state.pinchStartDist) * PINCH_SENSITIVITY) / this.state.pinchStartDist));
-      const clamped = Math.max(ZOOM_RANGE.min, Math.min(ZOOM_RANGE.max, nz));
-      this.state.zoom = clamped;
-      if (this.activeTool === 'adjust') {
-        const sZoom = this.els.toolContentInner.querySelector('#sZoomSlider');
-        const vZoom = this.els.toolContentInner.querySelector('#sZoomVal');
-        if (sZoom) { sZoom.value = clamped; vZoom.textContent = clamped + '%'; }
+
+      if (this.state.pinchTextId) {
+        // 双指在文字上：缩放字体大小
+        const text = this.state.texts.find(t => t.id === this.state.pinchTextId);
+        if (text) {
+          const ratio = dist / this.state.pinchStartDist;
+          let newSize = Math.round(this.state.pinchTextStartSize * (1 + (ratio - 1) * 1.5));
+          newSize = Math.max(12, Math.min(200, newSize));
+          text.fontSize = newSize;
+          this.refreshDisplay();
+        }
+      } else {
+        // 双指在其他区域：缩放图片
+        const nz = Math.round(this.state.pinchStartZoom * (1 + ((dist - this.state.pinchStartDist) * PINCH_SENSITIVITY) / this.state.pinchStartDist));
+        const clamped = Math.max(ZOOM_RANGE.min, Math.min(ZOOM_RANGE.max, nz));
+        this.state.zoom = clamped;
+        if (this.activeTool === 'adjust') {
+          const sZoom = this.els.toolContentInner.querySelector('#sZoomSlider');
+          const vZoom = this.els.toolContentInner.querySelector('#sZoomVal');
+          if (sZoom) { sZoom.value = clamped; vZoom.textContent = clamped + '%'; }
+        }
+        this.updateInfoBar();
+        this.scheduleRender();
       }
-      this.updateInfoBar();
-      this.scheduleRender();
     } else if (!this.state.isPinching && e.touches.length === 1) {
       const dx = Math.abs(e.touches[0].clientX - this.state.dragStartX);
       const dy = Math.abs(e.touches[0].clientY - this.state.dragStartY);
@@ -452,7 +422,7 @@ export class App {
   }
 
   handleTouchEnd(e) {
-    if (this.state.isPinching) { this.state.isPinching = false; this.endDrag(); return; }
+    if (this.state.isPinching) { this.state.isPinching = false; this.state.pinchTextId = null; this.endDrag(); return; }
     this.endDrag();
   }
 
@@ -481,7 +451,6 @@ export class App {
       this.updateInfoBar();
       this.hideLoading();
       this.scheduleRender();
-      // 后台预加载所有相框（不阻塞UI）
       this.preloadAllFrames();
     } catch (err) {
       this.hideLoading();
@@ -496,6 +465,7 @@ export class App {
     this.state.frameEnabled = false;
     this.state.frameImages = {};
     this.state.currentFrameKey = null;
+    this.state.texts = [];
     this.els.uploadArea.style.display = 'flex';
     this.els.editorArea.style.display = 'none';
     this.els.fileInput.value = '';
@@ -512,21 +482,16 @@ export class App {
   }
 
   // ===================== 分层渲染 =====================
-  // puzzleCanvas (offscreen) — 拼图结果缓存，仅参数变更时重建
-  // previewCanvas (onscreen)  — 显示画布
-
-  /** 重建拼图基座（参数变更时调用：zoom/rotation/size/color） */
   scheduleRender() {
     if (this.renderTimer) cancelAnimationFrame(this.renderTimer);
     this.els.previewCanvas.classList.add('updating');
     this.renderTimer = requestAnimationFrame(() => {
-      this.rebuildPuzzle();        // 重建拼图基座
-      this.refreshDisplay();       // 刷新显示
+      this.rebuildPuzzle();
+      this.refreshDisplay();
       this.els.previewCanvas.classList.remove('updating');
     });
   }
 
-  /** 重建 puzzleCanvas（offscreen缓存） */
   rebuildPuzzle() {
     if (!this.state.image) return;
     const size = this.state.selectedSize;
@@ -559,7 +524,7 @@ export class App {
     this._baseDim = { w: pvw, h: pvh };
   }
 
-  /** 刷新显示：将 puzzleCanvas 绘制到 previewCanvas，叠加相框 */
+  /** 刷新显示：叠加相框 + 叠加文字 */
   refreshDisplay() {
     if (!this.state.image || !this._baseDim) return;
     const canvas = this.els.previewCanvas;
@@ -568,14 +533,9 @@ export class App {
     const { w: pvw, h: pvh } = this._baseDim;
 
     if (this.state.frameEnabled) {
-      // 相框模式：按相框尺寸设定canvas
       const frameKey = this.state.currentFrameKey;
       const frameImg = this.state.frameImages[frameKey];
-      if (!frameImg || !frameKey) {
-        // 相框还没加载好，先显示无框
-        this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
-        return;
-      }
+      if (!frameImg || !frameKey) { this.drawBaseOnly(canvas, ctx, pc, pvw, pvh); this.drawTexts(canvas); return; }
       const cfg = FRAME_CONFIG[frameKey];
       const wrapper = this.els.canvasWrapper;
       const wrapW = wrapper.clientWidth;
@@ -595,14 +555,12 @@ export class App {
       canvas.style.height = '';
       renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
     } else {
-      // 无框模式
       this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
     }
-    // 叠加用户文字（在所有图层之上）
+    // 文字在相框之上
     renderTexts(ctx, this.state.texts, canvas.width, canvas.height);
   }
 
-  /** 仅绘制拼图基座（无相框） */
   drawBaseOnly(canvas, ctx, pc, pvw, pvh) {
     canvas.classList.remove('frame-active');
     canvas.style.width = '';
@@ -612,7 +570,11 @@ export class App {
     ctx.drawImage(pc, 0, 0);
   }
 
-  // ===================== 全屏预览 =====================
+  drawTexts(canvas) {
+    const ctx = canvas.getContext('2d');
+    renderTexts(ctx, this.state.texts, canvas.width, canvas.height);
+  }
+
   // ===================== 下载 =====================
   async handleDownload() {
     if (!this.state.image) return;
@@ -627,30 +589,28 @@ export class App {
       const imgW = this.state.image.naturalWidth;
       const imgH = this.state.image.naturalHeight;
       let pxW, pxH;
-      if (imgW / imgH > aspect) {
-        pxW = Math.round(imgW); pxH = Math.round(imgW / aspect);
-      } else {
-        pxH = Math.round(imgH); pxW = Math.round(imgH * aspect);
-      }
+      if (imgW / imgH > aspect) { pxW = Math.round(imgW); pxH = Math.round(imgW / aspect); }
+      else { pxH = Math.round(imgH); pxW = Math.round(imgH * aspect); }
       const mul = mode > 0 ? mode : 1;
       pxW = Math.round(pxW * mul); pxH = Math.round(pxH * mul);
       const MAX = 4096;
-      if (pxW > MAX || pxH > MAX) {
-        const ratio = Math.min(MAX / pxW, MAX / pxH);
-        pxW = Math.round(pxW * ratio); pxH = Math.round(pxH * ratio);
-      }
-      const offscreen = document.createElement('canvas');
-      const ctx = offscreen.getContext('2d');
+      if (pxW > MAX || pxH > MAX) { const r = Math.min(MAX / pxW, MAX / pxH); pxW = Math.round(pxW * r); pxH = Math.round(pxH * r); }
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
       renderImage(ctx, this.state.image, pxW, pxH, {
         zoom: this.state.zoom, offsetX: 0, offsetY: 0,
         rotation: this.state.rotation, fillColor: this.state.fillColor,
       });
+      // 叠加用户文字到下载图
+      if (this.state.texts.length > 0) {
+        renderTexts(ctx, this.state.texts, pxW, pxH);
+      }
       const filename = getOutputFilename(size.name, mode);
       await new Promise(r => setTimeout(r, 50));
-      downloadImage(offscreen, filename);
+      downloadImage(canvas, filename);
       this.showToast('图片已生成，开始下载');
-    } catch (err) {
-      this.showToast('下载失败，请重试');
+    } catch (err) { this.showToast('下载失败，请重试');
     } finally {
       this.els.downloadBtn.disabled = false;
       this.els.downloadBtn.style.opacity = '1';
@@ -668,7 +628,6 @@ export class App {
   }
 
   // ===================== 相框 =====================
-  /** 获取并缓存当前尺寸对应的相框key */
   preloadCurrentFrame() {
     if (!this.state.image) return Promise.resolve();
     const sizeIndex = SIZES.indexOf(this.state.selectedSize);
@@ -679,23 +638,14 @@ export class App {
     const isLandscape = pcW >= pcH;
     const frameKey = getFrameKey(sizeIndex, isLandscape);
     this.state.currentFrameKey = frameKey;
-    // 如果已缓存直接返回
     if (this.state.frameImages[frameKey]) return Promise.resolve();
-    // 未缓存则加载
-    return loadFrameImage(frameKey).then(img => {
-      this.state.frameImages[frameKey] = img;
-    }).catch(e => console.warn('相框加载失败:', e));
+    return loadFrameImage(frameKey).then(img => { this.state.frameImages[frameKey] = img; }).catch(e => console.warn('相框加载失败:', e));
   }
 
-  /** 上传后后台一次性预加载全部10个相框（不阻塞UI，只加载一次） */
   preloadAllFrames() {
     const ALL_KEYS = ['35_h','35_v','70_h','70_v','120_h','120_v','200_h','200_v','300_h','300_v'];
     ALL_KEYS.forEach(key => {
-      if (!this.state.frameImages[key]) {
-        loadFrameImage(key).then(img => {
-          this.state.frameImages[key] = img;
-        }).catch(() => {});
-      }
+      if (!this.state.frameImages[key]) { loadFrameImage(key).then(img => { this.state.frameImages[key] = img; }).catch(() => {}); }
     });
   }
 

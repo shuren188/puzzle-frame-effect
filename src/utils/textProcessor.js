@@ -16,7 +16,7 @@ export function createDefaultText() {
   return {
     id: genTextId(),
     content: '输入文字',
-    font: 'NotoSansSC',
+    font: 'SiYuanHei',
     fontSize: 36,
     color: '#FFFFFF',
     rotation: 0,
@@ -78,10 +78,5 @@ export function measureText(ctx, text, font, fontSize, canvasW) {
 }
 
 function getFontFamily(font) {
-  const map = {
-    'NotoSansSC': '"NotoSansSC", "PingFang SC", "Microsoft YaHei", sans-serif',
-    'SiYuanHei': '"SiYuanHei", "PingFang SC", "Microsoft YaHei", sans-serif',
-    'QingChaKaiTi': '"QingChaKaiTi", "KaiTi", "STKaiti", serif',
-  };
-  return map[font] || '"NotoSansSC", sans-serif';
+  return '"SiYuanHei", "PingFang SC", "Microsoft YaHei", sans-serif';
 }
