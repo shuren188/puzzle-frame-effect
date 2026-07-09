@@ -245,7 +245,7 @@ export class App {
       this.state.editText = null;
       this.renderTextPanel(container);
       this.refreshDisplay();
-      this.showToast('添加成功，拖拽移动，双指缩放');
+      this.showToast('添加成功');
     });
     container.querySelector('#textList').addEventListener('click', (e) => {
       const item = e.target.closest('.text-list-item');
