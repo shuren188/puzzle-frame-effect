@@ -16,10 +16,9 @@ export function createDefaultText() {
   return {
     id: genTextId(),
     content: '输入文字',
-    font: 'SiYuanHei',
+    font: 'sans-serif',
     fontSize: 36,
     color: '#FFFFFF',
-    rotation: 0,
     x: 0.5,   // 相对坐标 0-1
     y: 0.5,
   };
@@ -45,7 +44,6 @@ export function renderTexts(ctx, texts, canvasW, canvasH) {
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate((t.rotation * Math.PI) / 180);
 
     ctx.font = `${Math.round(fontSize)}px ${fontFamily}`;
     ctx.textAlign = 'center';

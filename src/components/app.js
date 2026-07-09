@@ -24,7 +24,7 @@ export class App {
       frameEnabled: false, frameImages: {}, currentFrameKey: null, puzzleCanvas: null,
       texts: [], editText: null, draggingText: null,
       // 双指操作文字
-      pinchTextId: null, pinchTextStartSize: 36, pinchTextStartRot: 0, pinchTextStartAngle: 0,
+      pinchTextId: null, pinchTextStartSize: 36, pinchTextStartAngle: 0,
     };
     this.renderTimer = null;
     this.cacheDOM();
@@ -204,22 +204,16 @@ export class App {
       <div class="text-editor">
         <input class="text-input" id="textContent" type="text" value="${edit.content.replace(/"/g,'&quot;')}" placeholder="输入文字内容" maxlength="50" />
         <div class="text-color-row">
-          <span class="text-slider-label">文字颜色</span>
           <div class="text-color-group">
             <button class="color-btn${edit.color==='#FFFFFF'?' active':''}" data-tc="#FFFFFF" style="background:#fff" title="白色"></button>
             <button class="color-btn${edit.color==='#FF0000'?' active':''}" data-tc="#FF0000" style="background:#f00" title="红色"></button>
             <button class="color-btn${edit.color==='#FFEB3B'?' active':''}" data-tc="#FFEB3B" style="background:#ffeb3b" title="黄色"></button>
             <button class="color-btn${edit.color==='#00BCD4'?' active':''}" data-tc="#00BCD4" style="background:#00bcd4" title="青色"></button>
             <button class="color-btn${edit.color==='#000000'?' active':''}" data-tc="#000000" style="background:#000" title="黑色"></button>
-            <button class="color-btn custom" id="textCustomColor">+</button>
           </div>
         </div>
-        <div class="text-actions">
-          <button class="text-btn-primary" id="textAddBtn">${this.state.texts.find(t => t.id === edit.id) ? '更新文字' : '添加文字'}</button>
-          <button class="text-btn-danger" id="textDelBtn" style="${this.state.texts.length ? '' : 'display:none'}">删除</button>
-        </div>
-        <div class="text-list" id="textList">${this.state.texts.map(t => '<div class="text-list-item' + (edit && edit.id === t.id ? ' active' : '') + '" data-tid="' + t.id + '"><span class="text-list-preview">' + t.content + '</span><button class="text-list-del" data-tid="' + t.id + '">✕</button></div>').join('')}</div>
-        <div class="text-hint">添加后拖拽文字调整位置，双指捏合调整大小</div>
+        <button class="text-btn-primary" id="textAddBtn">${this.state.texts.find(t => t.id === edit.id) ? '更新' : '添加'}</button>
+        <div class="text-list" id="textList">${this.state.texts.map(t => '<div class="text-list-item' + (edit && edit.id === t.id ? ' active' : '') + '" data-tid="' + t.id + '"><span class="text-list-preview">' + t.content + '</span></div>').join('')}</div>
       </div>
     `;
 
@@ -228,18 +222,15 @@ export class App {
     });
     container.querySelector('.text-color-group').addEventListener('click', (e) => {
       const btn = e.target.closest('.color-btn'); if (!btn) return;
-      if (btn.id === 'textCustomColor') {
-        new ColorPicker({ initialColor: edit.color, onConfirm: (c) => { edit.color = c; this.state.editText = edit; this.syncColorBtns(c); }});
-        return;
-      }
       const c = btn.dataset.tc; edit.color = c; this.state.editText = edit;
-      this.syncColorBtns(c);
+      btn.parentElement.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
     });
     container.querySelector('#textAddBtn').addEventListener('click', () => {
       if (!edit.content.trim()) return;
       const existing = this.state.texts.find(t => t.id === edit.id);
       if (existing) {
-        Object.assign(existing, { content: edit.content, fontSize: edit.fontSize, color: edit.color });
+        Object.assign(existing, { content: edit.content, color: edit.color });
       } else {
         this.state.texts.push({
           id: genTextId(),
@@ -247,7 +238,6 @@ export class App {
           font: 'sans-serif',
           fontSize: 36,
           color: edit.color || '#FFFFFF',
-          rotation: 0,
           x: 0.5,
           y: 0.5
         });
@@ -255,24 +245,10 @@ export class App {
       this.state.editText = null;
       this.renderTextPanel(container);
       this.refreshDisplay();
-      this.showToast('文字已添加，可拖拽调整位置');
-    });
-    container.querySelector('#textDelBtn').addEventListener('click', () => {
-      this.state.texts = this.state.texts.filter(t => t.id !== edit.id);
-      this.state.editText = null;
-      this.renderTextPanel(container);
-      this.refreshDisplay();
+      this.showToast('添加成功，拖拽移动，双指缩放');
     });
     container.querySelector('#textList').addEventListener('click', (e) => {
       const item = e.target.closest('.text-list-item');
-      const delBtn = e.target.closest('.text-list-del');
-      if (delBtn) {
-        this.state.texts = this.state.texts.filter(t => t.id !== delBtn.dataset.tid);
-        this.state.editText = null;
-        this.renderTextPanel(container);
-        this.refreshDisplay();
-        return;
-      }
       if (item) {
         const t = this.state.texts.find(tx => tx.id === item.dataset.tid);
         if (t) {
@@ -281,9 +257,6 @@ export class App {
         }
       }
     });
-
-    // 初始化颜色按钮状态
-    this.syncColorBtns(edit.color);
   }
 
   syncColorBtns(color) {
@@ -414,7 +387,6 @@ export class App {
         if (this.isInTextResizeArea(e, hit.text)) {
           this.state.pinchTextId = hit.text.id;
           this.state.pinchTextStartSize = hit.text.fontSize;
-          this.state.pinchTextStartRot = hit.text.rotation;
           this.state.pinchTextStartAngle = this.getTouchAngle(e);
         } else {
           this.state.pinchTextId = null;
