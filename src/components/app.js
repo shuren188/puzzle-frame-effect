@@ -23,8 +23,8 @@ export class App {
       touchStartTime: 0, touchMoved: false,
       frameEnabled: false, frameImages: {}, currentFrameKey: null, puzzleCanvas: null,
       texts: [], editText: null, draggingText: null,
-      // 双指缩放文字：记录pinch开始时选中的文字
-      pinchTextId: null, pinchTextStartSize: 36,
+      // 双指操作文字
+      pinchTextId: null, pinchTextStartSize: 36, pinchTextStartRot: 0, pinchTextStartAngle: 0,
     };
     this.renderTimer = null;
     this.cacheDOM();
@@ -214,23 +214,7 @@ export class App {
     container.innerHTML = `
       <div class="text-editor">
         <input class="text-input" id="textContent" type="text" value="${edit.content.replace(/"/g,'&quot;')}" placeholder="输入文字内容" maxlength="50" />
-        <div class="text-info-row">思源黑体 · 双指缩放调大小 · 拖拽移动位置</div>
-        <div class="text-slider-row">
-          <span class="text-slider-label">旋转</span>
-          <input type="range" class="slider" id="textRotate" min="-180" max="180" value="${edit.rotation}" />
-          <span class="slider-value" id="textRotateVal">${edit.rotation}°</span>
-        </div>
-        <div class="text-color-row">
-          <span class="text-slider-label">颜色</span>
-          <div class="text-color-group">
-            <button class="color-btn${edit.color==='#FFFFFF'?' active':''}" data-tc="#FFFFFF" style="background:#fff" title="白色"></button>
-            <button class="color-btn${edit.color==='#FF0000'?' active':''}" data-tc="#FF0000" style="background:#f00" title="红色"></button>
-            <button class="color-btn${edit.color==='#FFEB3B'?' active':''}" data-tc="#FFEB3B" style="background:#ffeb3b" title="黄色"></button>
-            <button class="color-btn${edit.color==='#00BCD4'?' active':''}" data-tc="#00BCD4" style="background:#00bcd4" title="青色"></button>
-            <button class="color-btn${edit.color==='#000000'?' active':''}" data-tc="#000000" style="background:#000" title="黑色"></button>
-            <button class="color-btn custom" id="textCustomColor">+</button>
-          </div>
-        </div>
+        <div class="text-info-row">思源黑体 · 拖拽移动 · 双指缩放大小</div>
         <div class="text-actions">
           <button class="text-btn-primary" id="textAddBtn">${this.state.texts.find(t => t.id === edit.id) ? '更新文字' : '添加文字'}</button>
           <button class="text-btn-danger" id="textDelBtn" style="${this.state.texts.length ? '' : 'display:none'}">删除</button>
@@ -242,26 +226,11 @@ export class App {
     container.querySelector('#textContent').addEventListener('input', (e) => {
       edit.content = e.target.value; this.state.editText = edit;
     });
-    container.querySelector('#textRotate').addEventListener('input', (e) => {
-      edit.rotation = parseInt(e.target.value);
-      container.querySelector('#textRotateVal').textContent = edit.rotation + '°';
-      this.state.editText = edit;
-    });
-    container.querySelector('.text-color-group').addEventListener('click', (e) => {
-      const btn = e.target.closest('.color-btn'); if (!btn) return;
-      if (btn.id === 'textCustomColor') {
-        new ColorPicker({ initialColor: edit.color, onConfirm: (c) => { edit.color = c; this.state.editText = edit; this.syncColorBtns(c); this.refreshDisplay(); }});
-        return;
-      }
-      const c = btn.dataset.tc; edit.color = c; this.state.editText = edit;
-      this.syncColorBtns(c);
-      this.refreshDisplay();
-    });
     container.querySelector('#textAddBtn').addEventListener('click', () => {
       if (!edit.content.trim()) return;
       const existing = this.state.texts.find(t => t.id === edit.id);
-      if (existing) { Object.assign(existing, { content: edit.content, fontSize: edit.fontSize, color: edit.color, rotation: edit.rotation }); }
-      else { this.state.texts.push({ id: genTextId(), content: edit.content, font: 'SiYuanHei', fontSize: 36, color: edit.color, rotation: edit.rotation, x: 0.5, y: 0.5 }); }
+      if (existing) { Object.assign(existing, { content: edit.content, fontSize: edit.fontSize }); }
+      else { this.state.texts.push({ id: genTextId(), content: edit.content, font: 'SiYuanHei', fontSize: 36, color: '#FFFFFF', rotation: 0, x: 0.5, y: 0.5 }); }
       this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay();
     });
     container.querySelector('#textDelBtn').addEventListener('click', () => {
@@ -349,6 +318,12 @@ export class App {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
+  getTouchAngle(e) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    return Math.atan2(dy, dx) * (180 / Math.PI);
+  }
+
   /** 找到第一个手指位置对应的文字 */
   findTextUnderFinger(pt) {
     const r = this.els.canvasWrapper.getBoundingClientRect();
@@ -363,11 +338,12 @@ export class App {
   handleTouchStart(e) {
     if (e.touches.length >= 2) {
       e.preventDefault();
-      // 检测手指下方是否有文字（用第一个手指位置）
       const hit = this.findTextUnderFinger(e.touches[0]);
       if (hit) {
         this.state.pinchTextId = hit.text.id;
         this.state.pinchTextStartSize = hit.text.fontSize;
+        this.state.pinchTextStartRot = hit.text.rotation;
+        this.state.pinchTextStartAngle = this.getTouchAngle(e);
       } else {
         this.state.pinchTextId = null;
       }
@@ -391,17 +367,15 @@ export class App {
       const dist = this.getTouchDistance(e);
 
       if (this.state.pinchTextId) {
-        // 双指在文字上：缩放字体大小
         const text = this.state.texts.find(t => t.id === this.state.pinchTextId);
         if (text) {
+          // 缩放
           const ratio = dist / this.state.pinchStartDist;
           let newSize = Math.round(this.state.pinchTextStartSize * (1 + (ratio - 1) * 1.5));
-          newSize = Math.max(12, Math.min(200, newSize));
-          text.fontSize = newSize;
+          text.fontSize = Math.max(12, Math.min(200, newSize));
           this.refreshDisplay();
         }
       } else {
-        // 双指在其他区域：缩放图片
         const nz = Math.round(this.state.pinchStartZoom * (1 + ((dist - this.state.pinchStartDist) * PINCH_SENSITIVITY) / this.state.pinchStartDist));
         const clamped = Math.max(ZOOM_RANGE.min, Math.min(ZOOM_RANGE.max, nz));
         this.state.zoom = clamped;
