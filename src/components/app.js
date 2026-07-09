@@ -3,8 +3,14 @@ import { renderImage, loadImage } from '../utils/imageProcessor.js';
 import { downloadImage, getOutputFilename } from '../utils/download.js';
 import { ColorPicker } from './ColorPicker.js';
 import { renderFrame, loadFrameImage, getFrameKey, getFrameDisplaySize, FRAME_CONFIG } from '../utils/frameProcessor.js';
+import { renderTexts, createDefaultText, genTextId, measureText } from '../utils/textProcessor.js';
 
 const PINCH_SENSITIVITY = 0.45;
+const TEXT_FONTS = [
+  { id: 'NotoSansSC', name: '思源黑体', style: '黑体' },
+  { id: 'SiYuanHei', name: '思源黑体旧字形', style: '古典黑体' },
+  { id: 'QingChaKaiTi', name: '清茶楷体', style: '文艺楷体' },
+];
 
 export class App {
   constructor() {
@@ -21,6 +27,7 @@ export class App {
       isPinching: false, pinchStartDist: 0, pinchStartZoom: 100,
       touchStartTime: 0, touchMoved: false,
       frameEnabled: false, frameImages: {}, currentFrameKey: null, puzzleCanvas: null,
+      texts: [], editText: null, draggingText: null,
     };
     this.renderTimer = null;
     this.cacheDOM();
@@ -94,6 +101,18 @@ export class App {
 
     // 默认展开尺寸
     this.renderToolContent('size');
+
+    // 预加载自定义字体
+    this.loadFonts();
+  }
+
+  async loadFonts() {
+    try {
+      const fontNames = ['NotoSansSC', 'SiYuanHei', 'QingChaKaiTi'];
+      await Promise.allSettled(fontNames.map(name =>
+        document.fonts.load(`16px "${name}"`).catch(() => {})
+      ));
+    } catch (e) { /* 字体加载失败不影响核心功能 */ }
   }
 
   // ===================== 工具切换 =====================
@@ -120,6 +139,7 @@ export class App {
         case 'quality': this.renderQualityPanel(inner); break;
         case 'adjust': this.renderAdjustPanel(inner); break;
         case 'color': this.renderColorPanel(inner); break;
+        case 'text': this.renderTextPanel(inner); break;
       }
       requestAnimationFrame(() => {
         inner.style.transition = 'opacity .25s, transform .25s';
@@ -235,21 +255,149 @@ export class App {
     this.scheduleRender();
   }
 
-  // ===================== 触摸 =====================
+  // ===================== 文字工具 =====================
+  renderTextPanel(container) {
+    const edit = this.state.editText || createDefaultText();
+    this.state.editText = edit;
+
+    // 预填内容：如果上次编辑过文字
+    container.innerHTML = `
+      <div class="text-editor">
+        <input class="text-input" id="textContent" type="text" value="${edit.content.replace(/"/g,'&quot;')}" placeholder="输入文字内容" maxlength="50" />
+        <div class="text-font-row">
+          ${TEXT_FONTS.map(f => '<button class="text-font-btn' + (f.id === edit.font ? ' active' : '') + '" data-font="' + f.id + '"><span class="text-font-name">' + f.name + '</span><span class="text-font-style">' + f.style + '</span></button>').join('')}
+        </div>
+        <div class="text-slider-row">
+          <span class="text-slider-label">大小</span>
+          <input type="range" class="slider" id="textSize" min="16" max="120" value="${edit.fontSize}" />
+          <span class="slider-value" id="textSizeVal">${edit.fontSize}</span>
+        </div>
+        <div class="text-slider-row">
+          <span class="text-slider-label">旋转</span>
+          <input type="range" class="slider" id="textRotate" min="-180" max="180" value="${edit.rotation}" />
+          <span class="slider-value" id="textRotateVal">${edit.rotation}°</span>
+        </div>
+        <div class="text-color-row">
+          <span class="text-slider-label">颜色</span>
+          <div class="text-color-group">
+            <button class="color-btn${edit.color==='#FFFFFF'?' active':''}" data-tc="#FFFFFF" style="background:#fff" title="白色"></button>
+            <button class="color-btn${edit.color==='#FF0000'?' active':''}" data-tc="#FF0000" style="background:#f00" title="红色"></button>
+            <button class="color-btn${edit.color==='#FFEB3B'?' active':''}" data-tc="#FFEB3B" style="background:#ffeb3b" title="黄色"></button>
+            <button class="color-btn${edit.color==='#00BCD4'?' active':''}" data-tc="#00BCD4" style="background:#00bcd4" title="青色"></button>
+            <button class="color-btn${edit.color==='#000000'?' active':''}" data-tc="#000000" style="background:#000" title="黑色"></button>
+            <button class="color-btn custom" id="textCustomColor">+</button>
+          </div>
+        </div>
+        <div class="text-actions">
+          <button class="text-btn-primary" id="textAddBtn">${this.state.texts.find(t => t.id === edit.id) ? '更新文字' : '添加文字'}</button>
+          <button class="text-btn-danger" id="textDelBtn" style="${this.state.texts.length ? '' : 'display:none'}">删除</button>
+        </div>
+        <div class="text-list" id="textList">${this.state.texts.map(t => '<div class="text-list-item' + (edit && edit.id === t.id ? ' active' : '') + '" data-tid="' + t.id + '"><span class="text-list-preview">' + t.content + '</span><span class="text-list-font">' + (TEXT_FONTS.find(f=>f.id===t.font)||{name:t.font}).name + '</span><button class="text-list-del" data-tid="' + t.id + '">✕</button></div>').join('')}</div>
+      </div>
+    `;
+
+    // 绑定事件
+    container.querySelector('#textContent').addEventListener('input', (e) => {
+      edit.content = e.target.value; this.state.editText = edit;
+    });
+    container.querySelectorAll('.text-font-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        container.querySelectorAll('.text-font-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active'); edit.font = btn.dataset.font; this.state.editText = edit;
+      });
+    });
+    container.querySelector('#textSize').addEventListener('input', (e) => {
+      edit.fontSize = parseInt(e.target.value); container.querySelector('#textSizeVal').textContent = edit.fontSize; this.state.editText = edit;
+    });
+    container.querySelector('#textRotate').addEventListener('input', (e) => {
+      edit.rotation = parseInt(e.target.value); container.querySelector('#textRotateVal').textContent = edit.rotation + '°'; this.state.editText = edit;
+    });
+    container.querySelector('.text-color-group').addEventListener('click', (e) => {
+      const btn = e.target.closest('.color-btn'); if (!btn) return;
+      if (btn.id === 'textCustomColor') { new ColorPicker({ initialColor: edit.color, onConfirm: (c) => { edit.color = c; this.state.editText = edit; }}); return; }
+      container.querySelectorAll('.color-btn:not(.custom)').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); edit.color = btn.dataset.tc; this.state.editText = edit;
+    });
+    container.querySelector('#textAddBtn').addEventListener('click', () => {
+      if (!edit.content.trim()) return;
+      const existing = this.state.texts.find(t => t.id === edit.id);
+      if (existing) { Object.assign(existing, { content: edit.content, font: edit.font, fontSize: edit.fontSize, color: edit.color, rotation: edit.rotation }); }
+      else { this.state.texts.push({ id: genTextId(), content: edit.content, font: edit.font, fontSize: edit.fontSize, color: edit.color, rotation: edit.rotation, x: 0.5, y: 0.5 }); }
+      this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay();
+    });
+    container.querySelector('#textDelBtn').addEventListener('click', () => {
+      this.state.texts = this.state.texts.filter(t => t.id !== edit.id); this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay();
+    });
+    container.querySelector('#textList').addEventListener('click', (e) => {
+      const item = e.target.closest('.text-list-item'); const delBtn = e.target.closest('.text-list-del');
+      if (delBtn) { this.state.texts = this.state.texts.filter(t => t.id !== delBtn.dataset.tid); this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay(); return; }
+      if (item) { const t = this.state.texts.find(tx => tx.id === item.dataset.tid); if (t) { this.state.editText = { ...t }; this.renderTextPanel(container); } }
+    });
+  }
+
+  getTextAtPos(cx, cy, canvas) {
+    const pcw = canvas.width; const pch = canvas.height;
+    for (let i = this.state.texts.length - 1; i >= 0; i--) {
+      const t = this.state.texts[i];
+      const tx = t.x * pcw; const ty = t.y * pch;
+      const hit = Math.max(t.fontSize * 0.8, 24);
+      if (Math.abs(cx - tx) < hit && Math.abs(cy - ty) < hit) return t;
+    }
+    return null;
+  }
+
+  // ===================== 触摸/拖拽 =====================
   startDrag(e) {
     if (!this.state.image) return;
     const pt = e.touches ? e.touches[0] : e;
+    const r = this.els.canvasWrapper.getBoundingClientRect();
+    const cx = (pt.clientX - r.left) / r.width;
+    const cy = (pt.clientY - r.top) / r.height;
+
+    // 检查是否点击到文字
+    const canvas = this.els.previewCanvas;
+    const hit = this.getTextAtPos(cx * canvas.width, cy * canvas.height, canvas);
+    if (hit) {
+      this.state.draggingText = hit.text;
+      this.state.dragStartX = pt.clientX;
+      this.state.dragStartY = pt.clientY;
+      this.state.touchMoved = false;
+      return;
+    }
+
     this.state.isDragging = true;
+    this.state.draggingText = null;
     this.els.canvasWrapper.classList.add('dragging');
     this.state.dragStartX = pt.clientX;
     this.state.dragStartY = pt.clientY;
   }
 
   onDrag(e) {
-    if (!this.state.isDragging) return;
-    const dx = Math.abs((e.touches ? e.touches[0].clientX : e.clientX) - this.state.dragStartX);
-    const dy = Math.abs((e.touches ? e.touches[0].clientY : e.clientY) - this.state.dragStartY);
+    if (!this.state.image) return;
+    const pos = e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+
+    // 文字拖拽
+    if (this.state.draggingText) {
+      const r = this.els.canvasWrapper.getBoundingClientRect();
+      this.state.draggingText.x = (pos.x - r.left) / r.width;
+      this.state.draggingText.y = (pos.y - r.top) / r.height;
+      this.state.draggingText.x = Math.max(0.05, Math.min(0.95, this.state.draggingText.x));
+      this.state.draggingText.y = Math.max(0.05, Math.min(0.95, this.state.draggingText.y));
+      this.refreshDisplay();
+      return;
+    }
+
+    const dx = Math.abs(pos.x - this.state.dragStartX);
+    const dy = Math.abs(pos.y - this.state.dragStartY);
     if (dx > 5 || dy > 5) this.state.touchMoved = true;
+  }
+
+  endDrag() {
+    this.state.draggingText = null;
+    if (this.state.isDragging) {
+      this.state.isDragging = false;
+      this.els.canvasWrapper.classList.remove('dragging');
+    }
   }
 
   endDrag() {
@@ -450,6 +598,8 @@ export class App {
       // 无框模式
       this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
     }
+    // 叠加用户文字（在所有图层之上）
+    renderTexts(ctx, this.state.texts, canvas.width, canvas.height);
   }
 
   /** 仅绘制拼图基座（无相框） */
