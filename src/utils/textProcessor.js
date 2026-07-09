@@ -78,5 +78,5 @@ export function measureText(ctx, text, font, fontSize, canvasW) {
 }
 
 function getFontFamily(font) {
-  return '"SiYuanHei", "PingFang SC", "Microsoft YaHei", sans-serif';
+  return 'sans-serif';
 }

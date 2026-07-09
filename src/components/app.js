@@ -120,7 +120,6 @@ export class App {
       switch (tool) {
         case 'size': this.renderSizePanel(inner); break;
         case 'quality': this.renderQualityPanel(inner); break;
-        case 'adjust': this.renderAdjustPanel(inner); break;
         case 'color': this.renderColorPanel(inner); break;
         case 'text': this.renderTextPanel(inner); break;
       }
@@ -166,21 +165,10 @@ export class App {
   renderAdjustPanel(container) {
     container.innerHTML = `
       <div class="slider-group"><label class="slider-label"><span>缩放比例</span><span class="slider-value" id="sZoomVal">${this.state.zoom}%</span></label><input type="range" class="slider" id="sZoomSlider" min="${ZOOM_RANGE.min}" max="${ZOOM_RANGE.max}" value="${this.state.zoom}" step="${ZOOM_RANGE.step}" /></div>
-      <div class="rotate-group"><button class="rotate-btn" id="sRotateLeft">↺ 左转90°</button><button class="rotate-btn" id="sRotateRight">↻ 右转90°</button></div>
     `;
     container.querySelector('#sZoomSlider').addEventListener('input', () => {
       const v = parseInt(container.querySelector('#sZoomSlider').value);
       this.state.zoom = v; container.querySelector('#sZoomVal').textContent = v + '%';
-      this.updateInfoBar(); this.scheduleRender();
-    });
-    container.querySelector('#sRotateLeft').addEventListener('click', () => {
-      this.state.rotation = (this.state.rotation - 90 + 360) % 360;
-      if (this.state.frameEnabled) this.preloadCurrentFrame();
-      this.updateInfoBar(); this.scheduleRender();
-    });
-    container.querySelector('#sRotateRight').addEventListener('click', () => {
-      this.state.rotation = (this.state.rotation + 90) % 360;
-      if (this.state.frameEnabled) this.preloadCurrentFrame();
       this.updateInfoBar(); this.scheduleRender();
     });
   }
@@ -207,6 +195,7 @@ export class App {
   }
 
   // ===================== 文字工具 =====================
+  // ===================== 文字工具 =====================
   renderTextPanel(container) {
     const edit = this.state.editText || createDefaultText();
     this.state.editText = edit;
@@ -214,33 +203,87 @@ export class App {
     container.innerHTML = `
       <div class="text-editor">
         <input class="text-input" id="textContent" type="text" value="${edit.content.replace(/"/g,'&quot;')}" placeholder="输入文字内容" maxlength="50" />
-        <div class="text-info-row">思源黑体 · 拖拽移动 · 双指缩放大小</div>
+        <div class="text-color-row">
+          <span class="text-slider-label">文字颜色</span>
+          <div class="text-color-group">
+            <button class="color-btn${edit.color==='#FFFFFF'?' active':''}" data-tc="#FFFFFF" style="background:#fff" title="白色"></button>
+            <button class="color-btn${edit.color==='#FF0000'?' active':''}" data-tc="#FF0000" style="background:#f00" title="红色"></button>
+            <button class="color-btn${edit.color==='#FFEB3B'?' active':''}" data-tc="#FFEB3B" style="background:#ffeb3b" title="黄色"></button>
+            <button class="color-btn${edit.color==='#00BCD4'?' active':''}" data-tc="#00BCD4" style="background:#00bcd4" title="青色"></button>
+            <button class="color-btn${edit.color==='#000000'?' active':''}" data-tc="#000000" style="background:#000" title="黑色"></button>
+            <button class="color-btn custom" id="textCustomColor">+</button>
+          </div>
+        </div>
         <div class="text-actions">
           <button class="text-btn-primary" id="textAddBtn">${this.state.texts.find(t => t.id === edit.id) ? '更新文字' : '添加文字'}</button>
           <button class="text-btn-danger" id="textDelBtn" style="${this.state.texts.length ? '' : 'display:none'}">删除</button>
         </div>
         <div class="text-list" id="textList">${this.state.texts.map(t => '<div class="text-list-item' + (edit && edit.id === t.id ? ' active' : '') + '" data-tid="' + t.id + '"><span class="text-list-preview">' + t.content + '</span><button class="text-list-del" data-tid="' + t.id + '">✕</button></div>').join('')}</div>
+        <div class="text-hint">添加后拖拽文字调整位置，双指捏合调整大小</div>
       </div>
     `;
 
     container.querySelector('#textContent').addEventListener('input', (e) => {
       edit.content = e.target.value; this.state.editText = edit;
     });
+    container.querySelector('.text-color-group').addEventListener('click', (e) => {
+      const btn = e.target.closest('.color-btn'); if (!btn) return;
+      if (btn.id === 'textCustomColor') {
+        new ColorPicker({ initialColor: edit.color, onConfirm: (c) => { edit.color = c; this.state.editText = edit; this.syncColorBtns(c); }});
+        return;
+      }
+      const c = btn.dataset.tc; edit.color = c; this.state.editText = edit;
+      this.syncColorBtns(c);
+    });
     container.querySelector('#textAddBtn').addEventListener('click', () => {
       if (!edit.content.trim()) return;
       const existing = this.state.texts.find(t => t.id === edit.id);
-      if (existing) { Object.assign(existing, { content: edit.content, fontSize: edit.fontSize }); }
-      else { this.state.texts.push({ id: genTextId(), content: edit.content, font: 'SiYuanHei', fontSize: 36, color: '#FFFFFF', rotation: 0, x: 0.5, y: 0.5 }); }
-      this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay();
+      if (existing) {
+        Object.assign(existing, { content: edit.content, fontSize: edit.fontSize, color: edit.color });
+      } else {
+        this.state.texts.push({
+          id: genTextId(),
+          content: edit.content,
+          font: 'sans-serif',
+          fontSize: 36,
+          color: edit.color || '#FFFFFF',
+          rotation: 0,
+          x: 0.5,
+          y: 0.5
+        });
+      }
+      this.state.editText = null;
+      this.renderTextPanel(container);
+      this.refreshDisplay();
+      this.showToast('文字已添加，可拖拽调整位置');
     });
     container.querySelector('#textDelBtn').addEventListener('click', () => {
-      this.state.texts = this.state.texts.filter(t => t.id !== edit.id); this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay();
+      this.state.texts = this.state.texts.filter(t => t.id !== edit.id);
+      this.state.editText = null;
+      this.renderTextPanel(container);
+      this.refreshDisplay();
     });
     container.querySelector('#textList').addEventListener('click', (e) => {
-      const item = e.target.closest('.text-list-item'); const delBtn = e.target.closest('.text-list-del');
-      if (delBtn) { this.state.texts = this.state.texts.filter(t => t.id !== delBtn.dataset.tid); this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay(); return; }
-      if (item) { const t = this.state.texts.find(tx => tx.id === item.dataset.tid); if (t) { this.state.editText = { ...t }; this.renderTextPanel(container); } }
+      const item = e.target.closest('.text-list-item');
+      const delBtn = e.target.closest('.text-list-del');
+      if (delBtn) {
+        this.state.texts = this.state.texts.filter(t => t.id !== delBtn.dataset.tid);
+        this.state.editText = null;
+        this.renderTextPanel(container);
+        this.refreshDisplay();
+        return;
+      }
+      if (item) {
+        const t = this.state.texts.find(tx => tx.id === item.dataset.tid);
+        if (t) {
+          this.state.editText = { ...t };
+          this.renderTextPanel(container);
+        }
+      }
     });
+
+    // 初始化颜色按钮状态
+    this.syncColorBtns(edit.color);
   }
 
   syncColorBtns(color) {
@@ -324,6 +367,33 @@ export class App {
     return Math.atan2(dy, dx) * (180 / Math.PI);
   }
 
+  // 检查双指操作是否在文字缩放区域
+  isInTextResizeArea(e, text) {
+    const r = this.els.canvasWrapper.getBoundingClientRect();
+    const cw = this.els.previewCanvas.width;
+    const ch = this.els.previewCanvas.height;
+
+    // 文字在画布上的坐标
+    const textX = text.x * cw;
+    const textY = text.y * ch;
+
+    // 转换触摸坐标到画布坐标
+    const touch1 = {
+      x: ((e.touches[0].clientX - r.left) / r.width) * cw,
+      y: ((e.touches[0].clientY - r.top) / r.height) * ch
+    };
+    const touch2 = {
+      x: ((e.touches[1].clientX - r.left) / r.width) * cw,
+      y: ((e.touches[1].clientY - r.top) / r.height) * ch
+    };
+
+    // 检查两个触摸点是否分别在文字的右上方和左下方
+    const rightTop = (touch1.x > textX && touch1.y < textY) || (touch2.x > textX && touch2.y < textY);
+    const leftBottom = (touch1.x < textX && touch1.y > textY) || (touch2.x < textX && touch2.y > textY);
+
+    return rightTop && leftBottom;
+  }
+
   /** 找到第一个手指位置对应的文字 */
   findTextUnderFinger(pt) {
     const r = this.els.canvasWrapper.getBoundingClientRect();
@@ -340,10 +410,15 @@ export class App {
       e.preventDefault();
       const hit = this.findTextUnderFinger(e.touches[0]);
       if (hit) {
-        this.state.pinchTextId = hit.text.id;
-        this.state.pinchTextStartSize = hit.text.fontSize;
-        this.state.pinchTextStartRot = hit.text.rotation;
-        this.state.pinchTextStartAngle = this.getTouchAngle(e);
+        // 检查是否在缩放区域
+        if (this.isInTextResizeArea(e, hit.text)) {
+          this.state.pinchTextId = hit.text.id;
+          this.state.pinchTextStartSize = hit.text.fontSize;
+          this.state.pinchTextStartRot = hit.text.rotation;
+          this.state.pinchTextStartAngle = this.getTouchAngle(e);
+        } else {
+          this.state.pinchTextId = null;
+        }
       } else {
         this.state.pinchTextId = null;
       }
@@ -369,11 +444,17 @@ export class App {
       if (this.state.pinchTextId) {
         const text = this.state.texts.find(t => t.id === this.state.pinchTextId);
         if (text) {
-          // 缩放
-          const ratio = dist / this.state.pinchStartDist;
-          let newSize = Math.round(this.state.pinchTextStartSize * (1 + (ratio - 1) * 1.5));
-          text.fontSize = Math.max(12, Math.min(200, newSize));
-          this.refreshDisplay();
+          // 检查是否仍在缩放区域
+          if (this.isInTextResizeArea(e, text)) {
+            // 缩放文字大小
+            const ratio = dist / this.state.pinchStartDist;
+            let newSize = Math.round(this.state.pinchTextStartSize * (1 + (ratio - 1) * 1.5));
+            text.fontSize = Math.max(12, Math.min(200, newSize));
+            this.refreshDisplay();
+          } else {
+            // 退出文字缩放模式
+            this.state.pinchTextId = null;
+          }
         }
       } else {
         const nz = Math.round(this.state.pinchStartZoom * (1 + ((dist - this.state.pinchStartDist) * PINCH_SENSITIVITY) / this.state.pinchStartDist));
