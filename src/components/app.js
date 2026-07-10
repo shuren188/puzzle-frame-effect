@@ -212,7 +212,10 @@ export class App {
             <button class="color-btn${edit.color==='#000000'?' active':''}" data-tc="#000000" style="background:#000" title="黑色"></button>
           </div>
         </div>
-        <button class="text-btn-primary" id="textAddBtn">${this.state.texts.find(t => t.id === edit.id) ? '更新' : '添加'}</button>
+        <div class="text-actions">
+          <button class="text-btn-primary" id="textAddBtn">${this.state.texts.find(t => t.id === edit.id) ? '更新' : '添加'}</button>
+          ${this.state.texts.find(t => t.id === edit.id) ? '<button class="text-btn-danger" id="textDeleteBtn">删除</button>' : ''}
+        </div>
         <div class="text-list" id="textList">${this.state.texts.map(t => '<div class="text-list-item' + (edit && edit.id === t.id ? ' active' : '') + '" data-tid="' + t.id + '"><span class="text-list-preview">' + t.content + '</span></div>').join('')}</div>
       </div>
     `;
@@ -237,15 +240,28 @@ export class App {
           content: edit.content,
           font: 'sans-serif',
           fontSize: 36,
+          scale: 1,
           color: edit.color || '#FFFFFF',
           x: 0.5,
-          y: 0.5
+          y: 0.5,
+          selected: false
         });
       }
       this.state.editText = null;
       this.renderTextPanel(container);
       this.refreshDisplay();
       this.showToast('添加成功');
+    });
+    container.querySelector('#textDeleteBtn')?.addEventListener('click', () => {
+      const existing = this.state.texts.find(t => t.id === edit.id);
+      if (existing) {
+        const index = this.state.texts.indexOf(existing);
+        this.state.texts.splice(index, 1);
+        this.state.editText = null;
+        this.renderTextPanel(container);
+        this.refreshDisplay();
+        this.showToast('文字已删除');
+      }
     });
     container.querySelector('#textList').addEventListener('click', (e) => {
       const item = e.target.closest('.text-list-item');
@@ -282,20 +298,25 @@ export class App {
     const pt = e.touches ? e.touches[0] : e;
     const r = this.els.canvasWrapper.getBoundingClientRect();
     const cx = (pt.clientX - r.left) / r.width;
+    const cy = (pt.clientY - r.top) / r.height;
 
     // 检查是否点击到文字
     const canvas = this.els.previewCanvas;
-    const hit = this.getTextAtPos(cx * canvas.width, pt.clientY * (canvas.height / r.height), canvas);
+    const hit = this.hitTestText(cx * canvas.width, cy * canvas.height, this.state.texts, canvas.width, canvas.height, canvas.getContext('2d'));
     if (hit) {
-      this.state.draggingText = hit.text;
-      this.state.dragStartX = pt.clientX;
-      this.state.dragStartY = pt.clientY;
-      this.state.touchMoved = false;
+      this.state.selectedTextId = hit.text.id;
+      this.state.textDragMode = true;
+      this.state.textDragStart = { x: pt.clientX, y: pt.clientY };
+      this.state.textOriginalPos = { x: hit.text.x, y: hit.text.y };
+      this.state.textOriginalScale = hit.text.scale || 1;
+      this.refreshDisplay(); // 刷新显示选中状态
       return;
     }
 
+    // 点击图片，处理图片拖动
+    this.state.selectedTextId = null;
+    this.state.textDragMode = false;
     this.state.isDragging = true;
-    this.state.draggingText = null;
     this.els.canvasWrapper.classList.add('dragging');
     this.state.dragStartX = pt.clientX;
     this.state.dragStartY = pt.clientY;
@@ -305,27 +326,29 @@ export class App {
     if (!this.state.image) return;
     const pos = e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
 
-    if (this.state.draggingText) {
-      const r = this.els.canvasWrapper.getBoundingClientRect();
-      this.state.draggingText.x = (pos.x - r.left) / r.width;
-      this.state.draggingText.y = (pos.y - r.top) / r.height;
-      this.state.draggingText.x = Math.max(0.05, Math.min(0.95, this.state.draggingText.x));
-      this.state.draggingText.y = Math.max(0.05, Math.min(0.95, this.state.draggingText.y));
-      this.refreshDisplay();
-      return;
+    if (this.state.textDragMode && this.state.selectedTextId) {
+      // 拖动文字
+      const text = this.state.texts.find(t => t.id === this.state.selectedTextId);
+      if (text) {
+        const r = this.els.canvasWrapper.getBoundingClientRect();
+        const dx = (pos.x - this.state.textDragStart.x) / r.width;
+        const dy = (pos.y - this.state.textDragStart.y) / r.height;
+        text.x = Math.max(0.05, Math.min(0.95, this.state.textOriginalPos.x + dx));
+        text.y = Math.max(0.05, Math.min(0.95, this.state.textOriginalPos.y + dy));
+        this.refreshDisplay();
+      }
+    } else if (this.state.isDragging) {
+      // 拖动图片
+      const dx = Math.abs(pos.x - this.state.dragStartX);
+      const dy = Math.abs(pos.y - this.state.dragStartY);
+      if (dx > 5 || dy > 5) this.state.touchMoved = true;
     }
-
-    const dx = Math.abs(pos.x - this.state.dragStartX);
-    const dy = Math.abs(pos.y - this.state.dragStartY);
-    if (dx > 5 || dy > 5) this.state.touchMoved = true;
   }
 
   endDrag() {
-    this.state.draggingText = null;
-    if (this.state.isDragging) {
-      this.state.isDragging = false;
-      this.els.canvasWrapper.classList.remove('dragging');
-    }
+    this.state.textDragMode = false;
+    this.state.isDragging = false;
+    this.els.canvasWrapper.classList.remove('dragging');
   }
 
   getTouchDistance(e) {
@@ -340,68 +363,50 @@ export class App {
     return Math.atan2(dy, dx) * (180 / Math.PI);
   }
 
-  // 检查双指操作是否在文字缩放区域
-  isInTextResizeArea(e, text) {
-    const r = this.els.canvasWrapper.getBoundingClientRect();
-    const cw = this.els.previewCanvas.width;
-    const ch = this.els.previewCanvas.height;
-
-    // 文字在画布上的坐标
-    const textX = text.x * cw;
-    const textY = text.y * ch;
-
-    // 转换触摸坐标到画布坐标
-    const touch1 = {
-      x: ((e.touches[0].clientX - r.left) / r.width) * cw,
-      y: ((e.touches[0].clientY - r.top) / r.height) * ch
-    };
-    const touch2 = {
-      x: ((e.touches[1].clientX - r.left) / r.width) * cw,
-      y: ((e.touches[1].clientY - r.top) / r.height) * ch
-    };
-
-    // 检查两个触摸点是否分别在文字的右上方和左下方
-    const rightTop = (touch1.x > textX && touch1.y < textY) || (touch2.x > textX && touch2.y < textY);
-    const leftBottom = (touch1.x < textX && touch1.y > textY) || (touch2.x < textX && touch2.y > textY);
-
-    return rightTop && leftBottom;
-  }
-
-  /** 找到第一个手指位置对应的文字 */
-  findTextUnderFinger(pt) {
-    const r = this.els.canvasWrapper.getBoundingClientRect();
-    const cw = this.els.previewCanvas.width;
-    const ch = this.els.previewCanvas.height;
-    const cx = ((pt.clientX - r.left) / r.width) * cw;
-    const cy = ((pt.clientY - r.top) / r.height) * ch;
-    const hit = this.getTextAtPos(cx, cy, this.els.previewCanvas);
-    return hit;
-  }
-
   handleTouchStart(e) {
     if (e.touches.length >= 2) {
       e.preventDefault();
-      const hit = this.findTextUnderFinger(e.touches[0]);
-      if (hit) {
-        // 检查是否在缩放区域
-        if (this.isInTextResizeArea(e, hit.text)) {
-          this.state.pinchTextId = hit.text.id;
-          this.state.pinchTextStartSize = hit.text.fontSize;
-          this.state.pinchTextStartAngle = this.getTouchAngle(e);
-        } else {
-          this.state.pinchTextId = null;
-        }
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+
+      // 检查是否在文字上
+      const hit1 = this.hitTestText(
+        ((touch1.clientX - this.els.canvasWrapper.getBoundingClientRect().left) / this.els.canvasWrapper.clientWidth) * this.els.previewCanvas.width,
+        ((touch1.clientY - this.els.canvasWrapper.getBoundingClientRect().top) / this.els.canvasWrapper.clientHeight) * this.els.previewCanvas.height,
+        this.state.texts,
+        this.els.previewCanvas.width,
+        this.els.previewCanvas.height,
+        this.els.previewCanvas.getContext('2d')
+      );
+      const hit2 = this.hitTestText(
+        ((touch2.clientX - this.els.canvasWrapper.getBoundingClientRect().left) / this.els.canvasWrapper.clientWidth) * this.els.previewCanvas.width,
+        ((touch2.clientY - this.els.canvasWrapper.getBoundingClientRect().top) / this.els.canvasWrapper.clientHeight) * this.els.previewCanvas.height,
+        this.state.texts,
+        this.els.previewCanvas.width,
+        this.els.previewCanvas.height,
+        this.els.previewCanvas.getContext('2d')
+      );
+
+      if (hit1 && hit2 && hit1.text.id === hit2.text.id) {
+        // 双指都在同一个文字上，进入文字缩放模式
+        this.state.textPinchMode = true;
+        this.state.selectedTextId = hit1.text.id;
+        this.state.pinchStartDist = this.getTouchDistance(e);
+        this.state.pinchStartScale = hit1.text.scale || 1;
       } else {
-        this.state.pinchTextId = null;
+        // 双指在图片上，进入图片缩放模式
+        this.state.textPinchMode = false;
+        this.state.selectedTextId = null;
+        this.state.isPinching = true;
+        this.state.pinchStartDist = this.getTouchDistance(e);
+        this.state.pinchStartZoom = this.state.zoom;
       }
-      this.state.isPinching = true;
-      this.state.pinchStartDist = this.getTouchDistance(e);
-      this.state.pinchStartZoom = this.state.zoom;
       this.state.isDragging = false;
       this.els.canvasWrapper.classList.remove('dragging');
     } else if (e.touches.length === 1) {
       this.state.isPinching = false;
-      this.state.pinchTextId = null;
+      this.state.textPinchMode = false;
+      this.state.selectedTextId = null;
       this.state.touchStartTime = Date.now();
       this.state.touchMoved = false;
       this.startDrag(e);
@@ -409,37 +414,30 @@ export class App {
   }
 
   handleTouchMove(e) {
-    if (this.state.isPinching && e.touches.length >= 2) {
+    if (this.state.textPinchMode && e.touches.length >= 2) {
       e.preventDefault();
       const dist = this.getTouchDistance(e);
+      const ratio = dist / this.state.pinchStartDist;
 
-      if (this.state.pinchTextId) {
-        const text = this.state.texts.find(t => t.id === this.state.pinchTextId);
-        if (text) {
-          // 检查是否仍在缩放区域
-          if (this.isInTextResizeArea(e, text)) {
-            // 缩放文字大小
-            const ratio = dist / this.state.pinchStartDist;
-            let newSize = Math.round(this.state.pinchTextStartSize * (1 + (ratio - 1) * 1.5));
-            text.fontSize = Math.max(12, Math.min(200, newSize));
-            this.refreshDisplay();
-          } else {
-            // 退出文字缩放模式
-            this.state.pinchTextId = null;
-          }
-        }
-      } else {
-        const nz = Math.round(this.state.pinchStartZoom * (1 + ((dist - this.state.pinchStartDist) * PINCH_SENSITIVITY) / this.state.pinchStartDist));
-        const clamped = Math.max(ZOOM_RANGE.min, Math.min(ZOOM_RANGE.max, nz));
-        this.state.zoom = clamped;
-        if (this.activeTool === 'adjust') {
-          const sZoom = this.els.toolContentInner.querySelector('#sZoomSlider');
-          const vZoom = this.els.toolContentInner.querySelector('#sZoomVal');
-          if (sZoom) { sZoom.value = clamped; vZoom.textContent = clamped + '%'; }
-        }
-        this.updateInfoBar();
-        this.scheduleRender();
+      const text = this.state.texts.find(t => t.id === this.state.selectedTextId);
+      if (text) {
+        text.scale = Math.max(0.5, Math.min(3.0, this.state.pinchStartScale * ratio));
+        this.refreshDisplay();
       }
+    } else if (this.state.isPinching && e.touches.length >= 2) {
+      e.preventDefault();
+      const dist = this.getTouchDistance(e);
+      const ratio = dist / this.state.pinchStartDist;
+      const nz = Math.round(this.state.pinchStartZoom * (1 + ((dist - this.state.pinchStartDist) * PINCH_SENSITIVITY) / this.state.pinchStartDist));
+      const clamped = Math.max(ZOOM_RANGE.min, Math.min(ZOOM_RANGE.max, nz));
+      this.state.zoom = clamped;
+      if (this.activeTool === 'adjust') {
+        const sZoom = this.els.toolContentInner.querySelector('#sZoomSlider');
+        const vZoom = this.els.toolContentInner.querySelector('#sZoomVal');
+        if (sZoom) { sZoom.value = clamped; vZoom.textContent = clamped + '%'; }
+      }
+      this.updateInfoBar();
+      this.scheduleRender();
     } else if (!this.state.isPinching && e.touches.length === 1) {
       const dx = Math.abs(e.touches[0].clientX - this.state.dragStartX);
       const dy = Math.abs(e.touches[0].clientY - this.state.dragStartY);
@@ -449,8 +447,24 @@ export class App {
   }
 
   handleTouchEnd(e) {
-    if (this.state.isPinching) { this.state.isPinching = false; this.state.pinchTextId = null; this.endDrag(); return; }
+    this.state.textPinchMode = false;
+    this.state.isPinching = false;
     this.endDrag();
+  }
+
+  // 命中检测文字
+  hitTestText(x, y, texts, canvasW, canvasH, ctx) {
+    // 从顶层到底层遍历（后添加的在上层）
+    for (let i = texts.length - 1; i >= 0; i--) {
+      const t = texts[i];
+      if (!t.content || !t.content.trim()) continue;
+
+      const bounds = getTextBounds(t, canvasW, canvasH, ctx);
+      if (isPointInText(x, y, bounds)) {
+        return { text: t, index: i, bounds };
+      }
+    }
+    return null;
   }
 
   // ===================== 文件处理 =====================
@@ -585,7 +599,7 @@ export class App {
       this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
     }
     // 文字在相框之上
-    renderTexts(ctx, this.state.texts, canvas.width, canvas.height);
+    renderTexts(ctx, this.state.texts, canvas.width, canvas.height, this.state.selectedTextId);
   }
 
   drawBaseOnly(canvas, ctx, pc, pvw, pvh) {
