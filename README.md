@@ -5,7 +5,7 @@
 > **一款轻量级在线拼图DIY编辑工具** — 上传照片，自由拼图裁剪、叠加透明相框、添加艺术文字，一键下载高清效果图。纯浏览器端运行，无需安装任何软件。
 
 [![在线体验](https://img.shields.io/badge/🌐_在线体验-点击前往-5ce5e5?style=for-the-badge)](https://shuren188.github.io/puzzle-frame-effect/)
-[![版本](https://img.shields.io/badge/最新版本-v4.12.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
+[![版本](https://img.shields.io/badge/最新版本-v4.13.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
 [![许可](https://img.shields.io/badge/开源许可-MIT-b794f4)](LICENSE)
 ![构建状态](https://img.shields.io/badge/构建-通过-success)
 ![生产依赖](https://img.shields.io/badge/生产依赖-零依赖-5ce5e5)
@@ -587,6 +587,16 @@ npm run build && npm run deploy
 ## 📋 版本发布记录
 
 > 每次版本更新都会在此记录。版本号格式：`v主版本.次版本.修订号`
+
+### v4.13.0 — 智能适配改为开关 + 相框裁剪至安全区域
+> 2026-07-11
+
+- **变更** 智能适配从按钮改为左上角开关（与右上角「相框预览」开关对称），去除星形图标
+- **变更** 相框预览时图片和文字均裁剪至 8mm 安全区域内，虚线外内容被裁剪——模拟真实相框物
+理遮挡效果
+- **变更** 关闭智能适配开关自动恢复默认缩放状态
+- **不变** 编辑图片（无相框）时仍显示安全区域虚线提醒
+- **不变** 下载图片为完整拼图+文字，不含相框/安全区域标记
 
 ### v4.12.0 — 交互优化：适配按钮位置+安全区域反转+默认白边
 > 2026-07-11
