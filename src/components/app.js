@@ -23,6 +23,7 @@ export class App {
       touchStartTime: 0, touchMoved: false,
       frameEnabled: false, frameImages: {}, currentFrameKey: null, puzzleCanvas: null,
       texts: [], editText: null, draggingText: null,
+      selectedTextId: null, clickCandidateTextId: null,
       // 双指缩放文字：记录pinch开始时选中的文字
       pinchTextId: null, pinchTextStartSize: 36,
     };
@@ -263,15 +264,15 @@ export class App {
       } else {
         this.state.texts.push({ id: genTextId(), content: edit.content, fontSize: 36, color: edit.color, x: 0.5, y: 0.5 });
       }
-      this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay();
+      this.state.editText = null; this.state.selectedTextId = null; this.renderTextPanel(container); this.refreshDisplay();
     });
     container.querySelector('#textDelBtn').addEventListener('click', () => {
-      this.state.texts = this.state.texts.filter(t => t.id !== edit.id); this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay();
+      this.state.texts = this.state.texts.filter(t => t.id !== edit.id); this.state.editText = null; this.state.selectedTextId = null; this.renderTextPanel(container); this.refreshDisplay();
     });
     container.querySelector('#textList').addEventListener('click', (e) => {
       const item = e.target.closest('.text-list-item'); const delBtn = e.target.closest('.text-list-del');
       if (delBtn) { this.state.texts = this.state.texts.filter(t => t.id !== delBtn.dataset.tid); this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay(); return; }
-      if (item) { const t = this.state.texts.find(tx => tx.id === item.dataset.tid); if (t) { this.state.editText = { ...t }; this.renderTextPanel(container); } }
+      if (item) { const t = this.state.texts.find(tx => tx.id === item.dataset.tid); if (t) { this.state.editText = { ...t }; this.state.selectedTextId = t.id; this.renderTextPanel(container); this.refreshDisplay(); } }
     });
   }
 
@@ -298,16 +299,27 @@ export class App {
     const pt = e.touches ? e.touches[0] : e;
     const r = this.els.canvasWrapper.getBoundingClientRect();
     const cx = (pt.clientX - r.left) / r.width;
+    const cy = (pt.clientY - r.top) / r.height;
 
     // 检查是否点击到文字
     const canvas = this.els.previewCanvas;
-    const hit = this.getTextAtPos(cx * canvas.width, pt.clientY * (canvas.height / r.height), canvas);
+    const hit = this.getTextAtPos(cx * canvas.width, cy * canvas.height, canvas);
     if (hit) {
-      this.state.draggingText = hit.text;
+      // 记录点击候选文本（等待判断是点击还是拖动）
+      this.state.clickCandidateTextId = hit.text.id;
       this.state.dragStartX = pt.clientX;
       this.state.dragStartY = pt.clientY;
       this.state.touchMoved = false;
       return;
+    }
+
+    // 点击空白区域：取消文字选中
+    if (this.state.selectedTextId) {
+      this.state.selectedTextId = null;
+      this.state.editText = null;
+      this.refreshDisplay();
+      // 如果当前在文字面板，重新渲染面板
+      if (this.activeTool === 'text') this.renderTextPanel(this.els.toolContentInner);
     }
 
     this.state.isDragging = true;
@@ -320,6 +332,18 @@ export class App {
   onDrag(e) {
     if (!this.state.image) return;
     const pos = e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+    const dx = Math.abs(pos.x - this.state.dragStartX);
+    const dy = Math.abs(pos.y - this.state.dragStartY);
+
+    // 文字点击候选 → 超过阈值转为拖动
+    if (this.state.clickCandidateTextId && (dx > 5 || dy > 5)) {
+      const text = this.state.texts.find(t => t.id === this.state.clickCandidateTextId);
+      if (text) {
+        this.state.draggingText = text;
+        this.state.clickCandidateTextId = null;
+        this.state.touchMoved = true;
+      }
+    }
 
     if (this.state.draggingText) {
       const r = this.els.canvasWrapper.getBoundingClientRect();
@@ -331,12 +355,26 @@ export class App {
       return;
     }
 
-    const dx = Math.abs(pos.x - this.state.dragStartX);
-    const dy = Math.abs(pos.y - this.state.dragStartY);
     if (dx > 5 || dy > 5) this.state.touchMoved = true;
   }
 
   endDrag() {
+    // 点击文字候选（未拖动）：选中文字，切到文字工具
+    if (this.state.clickCandidateTextId && !this.state.touchMoved) {
+      const text = this.state.texts.find(t => t.id === this.state.clickCandidateTextId);
+      if (text) {
+        this.state.selectedTextId = text.id;
+        this.state.editText = { ...text };
+        this.clickCandidateTextId = null;
+        this.state.draggingText = null;
+        // 切换到文字工具并刷新显示
+        if (this.activeTool !== 'text') this.switchTool('text');
+        else this.renderTextPanel(this.els.toolContentInner);
+        this.refreshDisplay();
+      }
+    }
+
+    this.state.clickCandidateTextId = null;
     this.state.draggingText = null;
     if (this.state.isDragging) {
       this.state.isDragging = false;
@@ -558,8 +596,8 @@ export class App {
     } else {
       this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
     }
-    // 文字在相框之上
-    renderTexts(ctx, this.state.texts, canvas.width, canvas.height);
+    // 文字在相框之上（传入选中ID以显示选中边框）
+    renderTexts(ctx, this.state.texts, canvas.width, canvas.height, this.state.selectedTextId);
   }
 
   drawBaseOnly(canvas, ctx, pc, pvw, pvh) {
@@ -573,7 +611,7 @@ export class App {
 
   drawTexts(canvas) {
     const ctx = canvas.getContext('2d');
-    renderTexts(ctx, this.state.texts, canvas.width, canvas.height);
+    renderTexts(ctx, this.state.texts, canvas.width, canvas.height, this.state.selectedTextId);
   }
 
   // ===================== 下载 =====================

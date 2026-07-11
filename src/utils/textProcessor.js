@@ -31,8 +31,9 @@ export function createDefaultText() {
  * @param {Array} texts - 文字配置数组
  * @param {number} canvasW - 画布宽度
  * @param {number} canvasH - 画布高度
+ * @param {string|null} selectedId - 选中文字的id（用于显示选中边框）
  */
-export function renderTexts(ctx, texts, canvasW, canvasH) {
+export function renderTexts(ctx, texts, canvasW, canvasH, selectedId) {
   if (!texts || texts.length === 0) return;
 
   const fontFamily = getFontFamily();
@@ -43,6 +44,7 @@ export function renderTexts(ctx, texts, canvasW, canvasH) {
     const x = t.x * canvasW;
     const y = t.y * canvasH;
     const fontSize = t.fontSize * (canvasW / 400);
+    const isSelected = selectedId && t.id === selectedId;
 
     ctx.save();
     ctx.translate(x, y);
@@ -50,6 +52,28 @@ export function renderTexts(ctx, texts, canvasW, canvasH) {
     ctx.font = `${Math.round(fontSize)}px ${fontFamily}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+
+    // 选中状态：绘制虚线边框
+    if (isSelected) {
+      const metrics = ctx.measureText(t.content);
+      const tw = metrics.width;
+      const th = fontSize;
+      const pad = 8;
+      ctx.save();
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = '#5ce5e5';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(-tw / 2 - pad, -th / 2 - pad, tw + pad * 2, th + pad * 2);
+      ctx.setLineDash([]);
+      ctx.restore();
+      // 恢复之前的save/restore状态同步
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.font = `${Math.round(fontSize)}px ${fontFamily}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+    }
 
     // 文字阴影（提升可读性）
     ctx.shadowColor = 'rgba(0,0,0,0.5)';
@@ -62,6 +86,21 @@ export function renderTexts(ctx, texts, canvasW, canvasH) {
 
     ctx.restore();
   });
+}
+
+/**
+ * 获取文字在画布上的渲染尺寸（用于命中检测等）
+ */
+export function getTextRenderSize(ctx, text, fontSize, canvasW) {
+  const fs = fontSize * (canvasW / 400);
+  ctx.font = `${Math.round(fs)}px ${getFontFamily()}`;
+  const metrics = ctx.measureText(text);
+  return {
+    width: metrics.width,
+    height: fs,
+    halfWidth: metrics.width / 2,
+    halfHeight: fs / 2,
+  };
 }
 
 /**
