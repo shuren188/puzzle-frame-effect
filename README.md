@@ -5,7 +5,7 @@
 > **一款轻量级在线拼图DIY编辑工具** — 上传照片，自由拼图裁剪、叠加透明相框、添加艺术文字，一键下载高清效果图。纯浏览器端运行，无需安装任何软件。
 
 [![在线体验](https://img.shields.io/badge/🌐_在线体验-点击前往-5ce5e5?style=for-the-badge)](https://shuren188.github.io/puzzle-frame-effect/)
-[![版本](https://img.shields.io/badge/最新版本-v4.17.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
+[![版本](https://img.shields.io/badge/最新版本-v4.20.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
 [![许可](https://img.shields.io/badge/开源许可-MIT-b794f4)](LICENSE)
 ![构建状态](https://img.shields.io/badge/构建-通过-success)
 ![生产依赖](https://img.shields.io/badge/生产依赖-零依赖-5ce5e5)
@@ -587,6 +587,27 @@ npm run build && npm run deploy
 ## 📋 版本发布记录
 
 > 每次版本更新都会在此记录。版本号格式：`v主版本.次版本.修订号`
+
+### v4.20.0 — 修复图片无法拖动
+> 2026-07-11
+
+- **根因** v4.x 重构时删除了 state 中的 `offsetX`/`offsetY` 字段，`renderImage()` 始终收到 `offset: 0`
+- **修复1** state 添加 `offsetX: 0, offsetY: 0`
+- **修复2** `rebuildPuzzle()` 传入 `state.offsetX/offsetY`
+- **修复3** `onDrag()` 新增图片拖动逻辑：屏幕偏移 → offset 百分比
+- **修复4** `resetImage()` / `smartAdapt()` / `processFile()` 全部重置 offset
+- **修复5** 下载 `handleDownload()` 同样传入状态值
+
+### v4.19.0 — 相框预览添加声明文字
+> 2026-07-11
+
+- **新增** 相框预览时底部显示「相框预览为模拟效果，实际成品可能存在细微差异，请以实物为准。」
+- **逻辑** 安全区域提示(青色)与相框声明(紫色)同一位置互斥切换
+
+### v4.18.0 — 安全区域提示文字上传即显示
+> 2026-07-11
+
+- **修改** 安全区域提示文字不再依赖相框开关状态，用户上传图片后立即显示
 
 ### v4.17.0 — 相框预览数据源改为 Editor Canvas 截图
 > 2026-07-11
