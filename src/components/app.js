@@ -18,6 +18,7 @@ export class App {
       quality: DEFAULTS.quality,
       fillColor: DEFAULTS.fillColor,
       zoom: DEFAULTS.zoom,
+      offsetX: 0, offsetY: 0,  // 图片拖动偏移
       rotation: DEFAULTS.rotation,
       isDragging: false, dragStartX: 0, dragStartY: 0,
       dragTextStartPos: null, // { x, y } 文字拖动开始时原始位置
@@ -126,6 +127,8 @@ export class App {
       } else {
         // 关闭智能适配 → 恢复默认缩放
         this.state.zoom = DEFAULTS.zoom;
+        this.state.offsetX = 0;
+        this.state.offsetY = 0;
         this.state.puzzleCanvas = null;
         this.updateInfoBar();
         this.scheduleRender();
@@ -699,6 +702,16 @@ export class App {
     }
 
     if (dx > 5 || dy > 5) this.state.touchMoved = true;
+
+    // ★ 图片拖动：根据屏幕偏移量更新 offsetX/offsetY
+    if (this.state.isDragging && !this.state.draggingText) {
+      const canvas = this.els.previewCanvas;
+      const deltaX = (pos.x - this.state.dragStartX) / canvas.width * 100;
+      const deltaY = (pos.y - this.state.dragStartY) / canvas.height * 100;
+      this.state.offsetX = Math.max(-100, Math.min(100, deltaX));
+      this.state.offsetY = Math.max(-100, Math.min(100, deltaY));
+      this.scheduleRender();
+    }
   }
 
   endDrag() {
@@ -835,6 +848,8 @@ export class App {
       this.state.zoom = DEFAULTS.zoom;
       this.state.rotation = DEFAULTS.rotation;
       this.state.fillColor = DEFAULTS.fillColor;
+      this.state.offsetX = 0;
+      this.state.offsetY = 0;
       this.state.puzzleCanvas = null;
       this.state.frameEnabled = false;
       this.setActiveColor(DEFAULTS.fillColor);
@@ -882,6 +897,8 @@ export class App {
     if (!this.state.image) return;
     this.state.zoom = DEFAULTS.zoom;
     this.state.rotation = DEFAULTS.rotation;
+    this.state.offsetX = 0;
+    this.state.offsetY = 0;
     this.state.puzzleCanvas = null;
     this.updateInfoBar();
     this.scheduleRender();
@@ -918,6 +935,8 @@ export class App {
       this.state.rotation
     );
     this.state.zoom = result.zoom;
+    this.state.offsetX = 0;
+    this.state.offsetY = 0;
     this.state.puzzleCanvas = null;
     this.updateInfoBar();
     this.scheduleRender();
@@ -967,7 +986,7 @@ export class App {
     pc.width = pvw;
     pc.height = pvh;
     renderImage(pc.getContext('2d'), this.state.image, pvw, pvh, {
-      zoom: this.state.zoom, offsetX: 0, offsetY: 0,
+      zoom: this.state.zoom, offsetX: this.state.offsetX || 0, offsetY: this.state.offsetY || 0,
       rotation: this.state.rotation, fillColor: this.state.fillColor,
     });
     this._baseDim = { w: pvw, h: pvh };
@@ -1102,7 +1121,7 @@ export class App {
       puzzle.width = pxW;
       puzzle.height = pxH;
       renderImage(puzzle.getContext('2d'), this.state.image, pxW, pxH, {
-        zoom: this.state.zoom, offsetX: 0, offsetY: 0,
+        zoom: this.state.zoom, offsetX: this.state.offsetX || 0, offsetY: this.state.offsetY || 0,
         rotation: this.state.rotation, fillColor: this.state.fillColor,
       });
       if (this.state.texts.length > 0) {
