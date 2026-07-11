@@ -164,29 +164,10 @@ export function renderFrame(ctx, puzzleCanvas, sizeKey, frameImg, displayWidth, 
   const innerW = config.innerWidth * scaleX;
   const innerH = config.innerHeight * scaleY;
 
-  // 将 PuzzleCanvas 等比例缩放到内框尺寸
-  const pcW = puzzleCanvas.width;
-  const pcH = puzzleCanvas.height;
-  const pcAspect = pcW / pcH;
-  const innerAspect = config.innerWidth / config.innerHeight;
-
-  let drawW, drawH, drawX, drawY;
-  if (pcAspect > innerAspect) {
-    // PuzzleCanvas更宽 → 以宽度为基准
-    drawW = innerW;
-    drawH = innerW / pcAspect;
-    drawX = innerLeft;
-    drawY = innerTop + (innerH - drawH) / 2;
-  } else {
-    // PuzzleCanvas更高 → 以高度为基准
-    drawH = innerH;
-    drawW = innerH * pcAspect;
-    drawX = innerLeft + (innerW - drawW) / 2;
-    drawY = innerTop;
-  }
-
-  // 第一次 drawImage：绘制 PuzzleCanvas（整体缩放后的 Bitmap）
-  ctx.drawImage(puzzleCanvas, 0, 0, pcW, pcH, drawX, drawY, drawW, drawH);
+  // ★ 第一次 drawImage：PuzzleCanvas 直接填满内框区域
+  //    不进行任何 aspect/fit/cover/contain 重新计算
+  //    PuzzleCanvas 已经是编辑区的最终渲染结果，不允许再次适配
+  ctx.drawImage(puzzleCanvas, 0, 0, puzzleCanvas.width, puzzleCanvas.height, innerLeft, innerTop, innerW, innerH);
 
   // 第二次 drawImage：绘制透明 PNG 相框
   ctx.drawImage(frameImg, 0, 0, dw, dh);

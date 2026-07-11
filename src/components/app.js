@@ -1039,21 +1039,11 @@ export class App {
       const innerTop_ = cfg.innerTop * scaleY_;
       const innerW_ = cfg.innerWidth * scaleX_;
       const innerH_ = cfg.innerHeight * scaleY_;
+      // ★ PuzzleCanvas 直接填满内框区域，不进行任何 aspect 重新计算
+      const drX = innerLeft_, drY = innerTop_, drW_ = innerW_, drH_ = innerH_;
       const pcW_ = pc.width, pcH_ = pc.height;
-      const pcAspect_ = pcW_ / pcH_;
-      const innerAspect_ = cfg.innerWidth / cfg.innerHeight;
-      let drX, drY, drW_, drH_;
-      if (pcAspect_ > innerAspect_) {
-        drW_ = innerW_; drH_ = innerW_ / pcAspect_;
-        drX = innerLeft_; drY = innerTop_ + (innerH_ - drH_) / 2;
-      } else {
-        drH_ = innerH_; drW_ = innerH_ * pcAspect_;
-        drX = innerLeft_ + (innerW_ - drW_) / 2; drY = innerTop_;
-      }
 
       // ★ 安全区域蒙版（将虚线外部分用半透明黑色覆盖，模拟相框遮挡）
-      //    这里的坐标：(drX, drY, drW_, drH_) 是原始 PuzzleCanvas 在显示中的位置
-      //    safeWidget = 8mm 内缩在 puzzle canvas 中的像素 → 映射到显示坐标
       const si_ = calcSafeAreaInset(pcW_, pcH_, safePhysW, safePhysH);
       const safeX = drX + si_.insetX * (drW_ / pcW_);
       const safeY = drY + si_.insetY * (drH_ / pcH_);
@@ -1062,13 +1052,9 @@ export class App {
 
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      // 上
       ctx.fillRect(drX, drY, drW_, safeY - drY);
-      // 下
       ctx.fillRect(drX, safeY + safeH, drW_, (drY + drH_) - (safeY + safeH));
-      // 左
       ctx.fillRect(drX, safeY, safeX - drX, safeH);
-      // 右
       ctx.fillRect(safeX + safeW, safeY, (drX + drW_) - (safeX + safeW), safeH);
       ctx.restore();
 

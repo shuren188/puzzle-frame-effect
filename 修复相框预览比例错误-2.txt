@@ -1,0 +1,95 @@
+# 修正 Frame Preview 的渲染逻辑（必须修改）
+
+我检查了目前 Frame Preview 的实现方式。
+
+目前 renderFrame() 中仍然存在一次新的图片适配（Fit）过程。
+
+例如：
+
+```js
+pcAspect
+innerAspect
+
+drawW
+drawH
+drawX
+drawY
+```
+
+然后再次：
+
+drawImage()
+
+将 PuzzleCanvas 重新适配到相框内框。
+
+这一套逻辑必须删除。
+
+---
+
+## 原因
+
+PuzzleCanvas 已经是编辑区最终渲染结果。
+
+里面已经包含：
+
+- 图片位置
+- 图片缩放
+- 图片旋转
+- 用户最终看到的布局
+
+Frame Preview 不允许再次计算：
+
+- Aspect
+- Cover
+- Contain
+- Fit
+- Center
+
+否则：
+
+编辑区安全区域看到的图片
+
+与
+
+相框预览看到的图片
+
+一定会出现差异。
+
+---
+
+## 正确实现
+
+Frame Preview 不负责图片布局。
+
+Frame Preview 只负责：
+
+① 显示 PuzzleCanvas。
+
+② 在最上层覆盖 PNG 相框。
+
+除此之外：
+
+不得再次参与任何图片计算。
+
+---
+
+## 最终要求
+
+编辑区安全区域内看到的内容，
+
+必须与相框预览中看到的图片逐像素一致。
+
+要求：
+
+- 图片位置一致
+- 图片缩放一致
+- 图片比例一致
+- 图片可见范围一致
+
+两者唯一允许存在的区别：
+
+相框预览比编辑区多了一层 PNG 相框。
+
+除此之外，不允许重新 Fit、重新 Cover、重新 Center，也不允许重新计算 drawImage 的目标区域。
+
+Frame Preview 必须作为 Editor 的镜像（Mirror）进行显示，而不是重新渲染一次图片。
