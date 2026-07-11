@@ -4,7 +4,7 @@ import { downloadImage, getOutputFilename } from '../utils/download.js';
 import { ColorPicker } from './ColorPicker.js';
 import { renderFrame, loadFrameImage, getFrameKey, getFrameDisplaySize, FRAME_CONFIG } from '../utils/frameProcessor.js';
 import { renderTexts, createDefaultText, genTextId, hitTestText, getCornerScreenPos } from '../utils/textProcessor.js';
-import { renderSafeArea } from '../utils/safeAreaProcessor.js';
+import { renderSafeArea, calcSafeAreaInset } from '../utils/safeAreaProcessor.js';
 
 const PINCH_SENSITIVITY = 0.45;
 
@@ -25,6 +25,7 @@ export class App {
       isPinching: false, pinchStartDist: 0, pinchStartZoom: 100,
       touchStartTime: 0, touchMoved: false,
       frameEnabled: false, frameImages: {}, currentFrameKey: null, puzzleCanvas: null,
+      smartEnabled: false,
       texts: [], editText: null, draggingText: null,
       selectedTextId: null, clickCandidateTextId: null,
       pinchTextId: null, pinchTextStartSize: 36,
@@ -62,7 +63,7 @@ export class App {
     this.els.textInputOverlay = $('textInputOverlay');
     this.els.layerMenu = $('layerMenu');
     this.els.safeAreaHint = $('safeAreaHint');
-    this.els.smartAdaptBtn = $('smartAdaptBtn');
+    this.els.smartToggle = $('smartToggle');
   }
 
   init() {
@@ -115,8 +116,20 @@ export class App {
     document.addEventListener('mouseup', () => this.endDrag());
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
 
-    // 智能适配按钮（预览区左上角）
-    this.els.smartAdaptBtn.addEventListener('click', () => this.smartAdapt());
+    // 智能适配开关
+    this.els.smartToggle.addEventListener('change', (e) => {
+      this.state.smartEnabled = e.target.checked;
+      if (this.state.smartEnabled) {
+        this.smartAdapt();
+      } else {
+        // 关闭智能适配 → 恢复默认缩放
+        this.state.zoom = DEFAULTS.zoom;
+        this.state.puzzleCanvas = null;
+        this.updateInfoBar();
+        this.scheduleRender();
+        this.showToast('已恢复默认');
+      }
+    });
 
     // 图层菜单
     this.els.layerMenu.addEventListener('click', (e) => {
@@ -984,11 +997,22 @@ export class App {
     if (this.state.frameEnabled) {
       const frameKey = this.state.currentFrameKey;
       const frameImg = this.state.frameImages[frameKey];
+      // ★ 计算安全区域裁剪偏移：相框预览时只显示虚线框内部分（8mm 内缩）
+      const si = calcSafeAreaInset(pvw, pvh, safePhysW, safePhysH);
+      const cropX = si.insetX;
+      const cropY = si.insetY;
+      const cropW = pvw - 2 * cropX;
+      const cropH = pvh - 2 * cropY;
+
       if (!frameImg || !frameKey) {
-        this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
-        // 相框未加载时：显示安全区域
-        renderSafeArea(ctx, canvas.width, canvas.height, safePhysW, safePhysH);
-        if (textLayer) ctx.drawImage(textLayer, 0, 0);
+        canvas.width = pvw;
+        canvas.height = pvh;
+        canvas.style.width = '';
+        canvas.style.height = '';
+        canvas.classList.remove('frame-active');
+        // 裁剪绘制到安全区域
+        ctx.drawImage(pc, cropX, cropY, cropW, cropH, 0, 0, pvw, pvh);
+        if (textLayer) ctx.drawImage(textLayer, cropX, cropY, cropW, cropH, 0, 0, pvw, pvh);
         return;
       }
       const cfg = FRAME_CONFIG[frameKey];
@@ -1010,8 +1034,7 @@ export class App {
       canvas.style.height = '';
       renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
 
-      // ★ 相框预览时：不显示安全区域（相框本身已遮盖）
-      // ★ 将文字覆盖层缩放到相框内框区域（与拼图对齐）
+      // ★ 将文字覆盖层缩放到相框内框区域（与拼图对齐），也裁剪到安全区域
       if (textLayer) {
         const scaleX = dsW / cfg.frameWidth;
         const scaleY = dsH / cfg.frameHeight;
@@ -1019,17 +1042,18 @@ export class App {
         const innerTop = cfg.innerTop * scaleY;
         const innerW = cfg.innerWidth * scaleX;
         const innerH = cfg.innerHeight * scaleY;
-        const pcAspect = pvw / pvh;
+        const pcAspect_ = cropW / cropH;
         const innerAspect = cfg.innerWidth / cfg.innerHeight;
         let drawW, drawH, drawX, drawY;
-        if (pcAspect > innerAspect) {
-          drawW = innerW; drawH = innerW / pcAspect;
+        if (pcAspect_ > innerAspect) {
+          drawW = innerW; drawH = innerW / pcAspect_;
           drawX = innerLeft; drawY = innerTop + (innerH - drawH) / 2;
         } else {
-          drawH = innerH; drawW = innerH * pcAspect;
+          drawH = innerH; drawW = innerH * pcAspect_;
           drawX = innerLeft + (innerW - drawW) / 2; drawY = innerTop;
         }
-        ctx.drawImage(textLayer, drawX, drawY, drawW, drawH);
+        // 从裁剪后的坐标系中绘制文字覆盖层
+        ctx.drawImage(textLayer, cropX, cropY, cropW, cropH, drawX, drawY, drawW, drawH);
       }
     } else {
       this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
