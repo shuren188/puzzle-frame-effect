@@ -208,7 +208,7 @@ export class App {
     container.innerHTML = `
       <div class="text-editor">
         <input class="text-input" id="textContent" type="text" value="${edit.content.replace(/"/g,'&quot;')}" placeholder="输入文字内容" maxlength="50" />
-        <div class="text-info-row">系统默认字体 · 双指缩放调大小 · 拖拽移动位置</div>
+        <div class="text-hint" id="textHint">双指缩放调大小 · 拖拽移动位置</div>
         <div class="text-color-row">
           <span class="text-slider-label">颜色</span>
           <div class="text-color-group">
@@ -230,6 +230,15 @@ export class App {
 
     container.querySelector('#textContent').addEventListener('input', (e) => {
       edit.content = e.target.value; this.state.editText = edit;
+    });
+    // 输入框聚焦/失焦：显示/隐藏操作提示
+    container.querySelector('#textContent').addEventListener('focus', () => {
+      const hint = container.querySelector('#textHint');
+      if (hint) hint.classList.add('show');
+    });
+    container.querySelector('#textContent').addEventListener('blur', () => {
+      const hint = container.querySelector('#textHint');
+      if (hint) hint.classList.remove('show');
     });
     container.querySelector('.text-color-group').addEventListener('click', (e) => {
       const btn = e.target.closest('.color-btn'); if (!btn) return;
