@@ -998,37 +998,16 @@ export class App {
       const frameKey = this.state.currentFrameKey;
       const frameImg = this.state.frameImages[frameKey];
 
-      // ★ 计算8mm安全区域裁剪偏移（物理尺寸 → Canvas像素）
-      const si = calcSafeAreaInset(pvw, pvh, safePhysW, safePhysH);
-      const cropX = si.insetX;
-      const cropY = si.insetY;
-      const cropW = pvw - 2 * cropX;
-      const cropH = pvh - 2 * cropY;
-
-      // ★ 裁剪 PuzzleCanvas 到安全区域（只保留虚线框内部分）
-      const croppedPc = document.createElement('canvas');
-      croppedPc.width = cropW;
-      croppedPc.height = cropH;
-      const cropCtx = croppedPc.getContext('2d');
-      cropCtx.drawImage(pc, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-
-      // ★ 裁剪文字覆盖层到同一安全区域
-      let croppedTextLayer = null;
-      if (textLayer) {
-        croppedTextLayer = document.createElement('canvas');
-        croppedTextLayer.width = cropW;
-        croppedTextLayer.height = cropH;
-        croppedTextLayer.getContext('2d').drawImage(textLayer, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-      }
-
       if (!frameImg || !frameKey) {
         canvas.width = pvw;
         canvas.height = pvh;
         canvas.style.width = '';
         canvas.style.height = '';
         canvas.classList.remove('frame-active');
-        ctx.drawImage(croppedPc, 0, 0, pvw, pvh);
-        if (croppedTextLayer) ctx.drawImage(croppedTextLayer, 0, 0, pvw, pvh);
+        ctx.drawImage(pc, 0, 0);
+        // 安全区域辅助层（虚线蒙版，仅编辑参考不参与缩放）
+        renderSafeArea(ctx, canvas.width, canvas.height, safePhysW, safePhysH);
+        if (textLayer) ctx.drawImage(textLayer, 0, 0);
         return;
       }
       const cfg = FRAME_CONFIG[frameKey];
@@ -1048,28 +1027,59 @@ export class App {
       canvas.height = dsH;
       canvas.style.width = '';
       canvas.style.height = '';
-      // ★ 传入裁剪后的画布：相框只显示安全区域内的图片（虚线外8mm被裁剪）
-      renderFrame(ctx, croppedPc, frameKey, frameImg, dsW, dsH);
 
-      // ★ 将裁剪后的文字覆盖层缩放到相框内框区域
-      if (croppedTextLayer) {
-        const scaleX = dsW / cfg.frameWidth;
-        const scaleY = dsH / cfg.frameHeight;
-        const innerLeft = cfg.innerLeft * scaleX;
-        const innerTop = cfg.innerTop * scaleY;
-        const innerW = cfg.innerWidth * scaleX;
-        const innerH = cfg.innerHeight * scaleY;
-        const ctAspect = cropW / cropH;
-        const innerAspect = cfg.innerWidth / cfg.innerHeight;
-        let drawW, drawH, drawX, drawY;
-        if (ctAspect > innerAspect) {
-          drawW = innerW; drawH = innerW / ctAspect;
-          drawX = innerLeft; drawY = innerTop + (innerH - drawH) / 2;
-        } else {
-          drawH = innerH; drawW = innerH * ctAspect;
-          drawX = innerLeft + (innerW - drawW) / 2; drawY = innerTop;
-        }
-        ctx.drawImage(croppedTextLayer, drawX, drawY, drawW, drawH);
+      // ★ 使用原始 PuzzleCanvas，不裁剪、不重新适配
+      //    renderFrame 将完整 pc 按原比例绘制到相框内框
+      renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
+
+      // ★ 计算安全区域在显示坐标中的位置（覆盖层，不参与图片缩放计算）
+      const scaleX_ = dsW / cfg.frameWidth;
+      const scaleY_ = dsH / cfg.frameHeight;
+      const innerLeft_ = cfg.innerLeft * scaleX_;
+      const innerTop_ = cfg.innerTop * scaleY_;
+      const innerW_ = cfg.innerWidth * scaleX_;
+      const innerH_ = cfg.innerHeight * scaleY_;
+      const pcW_ = pc.width, pcH_ = pc.height;
+      const pcAspect_ = pcW_ / pcH_;
+      const innerAspect_ = cfg.innerWidth / cfg.innerHeight;
+      let drX, drY, drW_, drH_;
+      if (pcAspect_ > innerAspect_) {
+        drW_ = innerW_; drH_ = innerW_ / pcAspect_;
+        drX = innerLeft_; drY = innerTop_ + (innerH_ - drH_) / 2;
+      } else {
+        drH_ = innerH_; drW_ = innerH_ * pcAspect_;
+        drX = innerLeft_ + (innerW_ - drW_) / 2; drY = innerTop_;
+      }
+
+      // ★ 安全区域蒙版（将虚线外部分用半透明黑色覆盖，模拟相框遮挡）
+      //    这里的坐标：(drX, drY, drW_, drH_) 是原始 PuzzleCanvas 在显示中的位置
+      //    safeWidget = 8mm 内缩在 puzzle canvas 中的像素 → 映射到显示坐标
+      const si_ = calcSafeAreaInset(pcW_, pcH_, safePhysW, safePhysH);
+      const safeX = drX + si_.insetX * (drW_ / pcW_);
+      const safeY = drY + si_.insetY * (drH_ / pcH_);
+      const safeW = (pcW_ - 2 * si_.insetX) * (drW_ / pcW_);
+      const safeH = (pcH_ - 2 * si_.insetY) * (drH_ / pcH_);
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      // 上
+      ctx.fillRect(drX, drY, drW_, safeY - drY);
+      // 下
+      ctx.fillRect(drX, safeY + safeH, drW_, (drY + drH_) - (safeY + safeH));
+      // 左
+      ctx.fillRect(drX, safeY, safeX - drX, safeH);
+      // 右
+      ctx.fillRect(safeX + safeW, safeY, (drX + drW_) - (safeX + safeW), safeH);
+      ctx.restore();
+
+      // ★ 文字覆盖层：裁剪到安全区域后绘制
+      if (textLayer) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(safeX, safeY, safeW, safeH);
+        ctx.clip();
+        ctx.drawImage(textLayer, drX, drY, drW_, drH_);
+        ctx.restore();
       }
     } else {
       this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
@@ -1113,20 +1123,68 @@ export class App {
       const MAX = 4096;
       if (pxW > MAX || pxH > MAX) { const r = Math.min(MAX / pxW, MAX / pxH); pxW = Math.round(pxW * r); pxH = Math.round(pxH * r); }
 
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      renderImage(ctx, this.state.image, pxW, pxH, {
+      // === 渲染完整拼图 + 文字（使用与编辑器相同的 ImageState） ===
+      const puzzle = document.createElement('canvas');
+      puzzle.width = pxW;
+      puzzle.height = pxH;
+      renderImage(puzzle.getContext('2d'), this.state.image, pxW, pxH, {
         zoom: this.state.zoom, offsetX: 0, offsetY: 0,
         rotation: this.state.rotation, fillColor: this.state.fillColor,
       });
-      // 叠加用户文字到下载图（不显示控制框）
       if (this.state.texts.length > 0) {
-        renderTexts(ctx, this.state.texts, pxW, pxH, null, { hideControls: true });
+        renderTexts(puzzle.getContext('2d'), this.state.texts, pxW, pxH, null, { hideControls: true });
       }
-      const filename = getOutputFilename(size.name, mode);
-      await new Promise(r => setTimeout(r, 50));
-      downloadImage(canvas, filename);
-      this.showToast('图片已生成，开始下载');
+
+      // === 相框模式：裁剪至安全区域 + 叠加相框 ===
+      if (this.state.frameEnabled && this.state.currentFrameKey && this.state.frameImages[this.state.currentFrameKey]) {
+        const frameKey = this.state.currentFrameKey;
+        const frameImg = this.state.frameImages[frameKey];
+        const cfg = FRAME_CONFIG[frameKey];
+        const isRotated = this.state.rotation % 180 !== 0;
+        const physW = isRotated ? size.heightCm : size.widthCm;
+        const physH = isRotated ? size.widthCm : size.heightCm;
+
+        // 安全区域裁剪（与编辑器完全一致的算法）
+        const si = calcSafeAreaInset(pxW, pxH, physW, physH);
+        const cropX = si.insetX;
+        const cropY = si.insetY;
+        const cropW = pxW - 2 * cropX;
+        const cropH = pxH - 2 * cropY;
+
+        // 将裁剪后的拼图匹配到相框比例
+        const frameAspect = cfg.frameWidth / cfg.frameHeight;
+        let dsW, dsH;
+        if (pxW / pxH > frameAspect) {
+          dsH = pxH; dsW = Math.round(dsH * frameAspect);
+        } else {
+          dsW = pxW; dsH = Math.round(dsW / frameAspect);
+        }
+
+        const out = document.createElement('canvas');
+        out.width = dsW;
+        out.height = dsH;
+        const octx = out.getContext('2d');
+
+        // 裁剪后的拼图
+        const cropped = document.createElement('canvas');
+        cropped.width = cropW;
+        cropped.height = cropH;
+        cropped.getContext('2d').drawImage(puzzle, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+        // 用 frameProcessor 渲染：只显示安全区域内内容 + 相框
+        renderFrame(octx, cropped, frameKey, frameImg, dsW, dsH);
+
+        const filename = getOutputFilename(size.name, mode);
+        await new Promise(r => setTimeout(r, 50));
+        downloadImage(out, filename.replace('.png', '_framed.png'));
+        this.showToast('带相框效果图已生成，开始下载');
+      } else {
+        // === 无相框模式：直接输出拼图 + 文字 ===
+        const filename = getOutputFilename(size.name, mode);
+        await new Promise(r => setTimeout(r, 50));
+        downloadImage(puzzle, filename);
+        this.showToast('图片已生成，开始下载');
+      }
     } catch (err) { this.showToast('下载失败，请重试');
     } finally {
       this.els.downloadBtn.disabled = false;
