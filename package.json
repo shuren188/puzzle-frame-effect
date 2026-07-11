@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "gh-pages -d dist"
+    "deploy": "node deploy-versioned.js"
   },
   "devDependencies": {
     "gh-pages": "^6.3.0",
