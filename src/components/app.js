@@ -19,6 +19,7 @@ export class App {
       zoom: DEFAULTS.zoom,
       rotation: DEFAULTS.rotation,
       isDragging: false, dragStartX: 0, dragStartY: 0,
+      dragTextStartPos: null, // { x, y } 文字拖动开始时原始位置
       isPinching: false, pinchStartDist: 0, pinchStartZoom: 100,
       touchStartTime: 0, touchMoved: false,
       frameEnabled: false, frameImages: {}, currentFrameKey: null, puzzleCanvas: null,
@@ -238,19 +239,18 @@ export class App {
 
     container.innerHTML = `
       <div class="text-panel">
-        <div class="text-color-row">
-          <span class="text-slider-label">颜色</span>
+        <div class="text-panel-row">
           <div class="text-color-group">
-            ${['#FFFFFF','#FF0000','#FFEB3B','#00BCD4','#000000'].map(c =>
+            ${['#FFFFFF','#FF0000','#FFEB3B','#EC4899'].map(c =>
               `<button class="color-btn${edit.color===c?' active':''}" data-tc="${c}" style="background:${c}" title="${c}"></button>`
             ).join('')}
             <button class="color-btn custom" id="panelCustomColor">+</button>
           </div>
-        </div>
-        <div class="text-panel-actions">
-          <button class="text-action-btn" id="layerUpBtn" title="上移一层">↑ 上移</button>
-          <button class="text-action-btn" id="layerDownBtn" title="下移一层">↓ 下移</button>
-          <button class="text-action-btn danger" id="panelDelBtn" title="删除">✕ 删除</button>
+          <div class="text-action-group">
+            <button class="text-action-btn" id="layerUpBtn" title="上移一层">↑</button>
+            <button class="text-action-btn" id="layerDownBtn" title="下移一层">↓</button>
+            <button class="text-action-btn danger" id="panelDelBtn" title="删除">✕</button>
+          </div>
         </div>
         <div class="text-list" id="textList">
           ${this.state.texts.map(t =>
@@ -344,7 +344,7 @@ export class App {
 
     // 渲染颜色按钮
     colorsContainer.innerHTML = `
-      ${['#FFFFFF','#FF0000','#FFEB3B','#00BCD4','#000000'].map(c =>
+      ${['#FFFFFF','#FF0000','#FFEB3B','#EC4899'].map(c =>
         `<button class="input-color-btn color-btn${text.color===c?' active':''}" data-tc="${c}" style="background:${c}"></button>`
       ).join('')}
       <button class="input-color-btn color-btn custom" id="inputCustomColor">+</button>
@@ -633,16 +633,27 @@ export class App {
       if (text) {
         this.state.selectedTextId = text.id;
         this.state.draggingText = text;
+        this.state.dragTextStartPos = { x: text.x, y: text.y };
         this.state.clickCandidateTextId = null;
         this.state.touchMoved = true;
-        // 打开输入弹窗（如果是点击文字触发拖动，不予打开）
       }
     }
 
     if (this.state.draggingText) {
+      // 增量式拖动：基于起始位置 + 屏幕偏移量映射
       const r = this.els.canvasWrapper.getBoundingClientRect();
-      this.state.draggingText.x = (pos.x - r.left) / r.width;
-      this.state.draggingText.y = (pos.y - r.top) / r.height;
+      const deltaX = (pos.x - this.state.dragStartX) / r.width;
+      const deltaY = (pos.y - this.state.dragStartY) / r.height;
+      const orig = this.state.dragTextStartPos;
+      if (orig) {
+        this.state.draggingText.x = Math.max(0.02, Math.min(0.98, orig.x + deltaX));
+        this.state.draggingText.y = Math.max(0.02, Math.min(0.98, orig.y + deltaY));
+      } else {
+        this.state.draggingText.x = (pos.x - r.left) / r.width;
+        this.state.draggingText.y = (pos.y - r.top) / r.height;
+      }
+      this.state.draggingText.x = Math.max(0.02, Math.min(0.98, this.state.draggingText.x));
+      this.state.draggingText.y = Math.max(0.02, Math.min(0.98, this.state.draggingText.y));
       this.state.draggingText.x = Math.max(0.02, Math.min(0.98, this.state.draggingText.x));
       this.state.draggingText.y = Math.max(0.02, Math.min(0.98, this.state.draggingText.y));
       this.refreshDisplay();
@@ -678,6 +689,7 @@ export class App {
 
     this.state.clickCandidateTextId = null;
     this.state.draggingText = null;
+    this.state.dragTextStartPos = null;
     if (this.state.isDragging) {
       this.state.isDragging = false;
       this.els.canvasWrapper.classList.remove('dragging');

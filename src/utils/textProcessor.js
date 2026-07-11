@@ -256,10 +256,10 @@ function drawCorner(ctx, x, y, key, tw, fs) {
   const s = r * 0.85;
 
   switch (key) {
-    case 'tl': // ⋮ 三个点
+    case 'tl': // ⋯ 三个横向点
       for (let i = -1; i <= 1; i++) {
         ctx.beginPath();
-        ctx.arc(x, y + i * 3.5, 2.2, 0, Math.PI * 2);
+        ctx.arc(x + i * 3.5, y, 2.2, 0, Math.PI * 2);
         ctx.fill();
       }
       break;
