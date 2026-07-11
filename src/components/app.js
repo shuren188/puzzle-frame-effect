@@ -283,12 +283,22 @@ export class App {
   }
 
   getTextAtPos(cx, cy, canvas) {
-    const pcw = canvas.width; const pch = canvas.height;
+    const ctx = canvas.getContext('2d');
+    const fontFamily = '"PingFang SC", "Microsoft YaHei", sans-serif';
+    const pcw = canvas.width;
     for (let i = this.state.texts.length - 1; i >= 0; i--) {
       const t = this.state.texts[i];
-      const tx = t.x * pcw; const ty = t.y * pch;
-      const hit = Math.max(t.fontSize * 0.8, 24);
-      if (Math.abs(cx - tx) < hit && Math.abs(cy - ty) < hit) return { text: t, index: i };
+      const tx = t.x * pcw; const ty = t.y * canvas.height;
+      const fs = t.fontSize * (pcw / 400);
+      ctx.font = `${Math.round(fs)}px ${fontFamily}`;
+      const metrics = ctx.measureText(t.content || '');
+      const tw = metrics.width;
+      const th = fs;
+      const pad = 12;
+      // 精确命中：基于实际文字渲染尺寸
+      if (Math.abs(cx - tx) < tw / 2 + pad && Math.abs(cy - ty) < th / 2 + pad) {
+        return { text: t, index: i };
+      }
     }
     return null;
   }
@@ -365,7 +375,7 @@ export class App {
       if (text) {
         this.state.selectedTextId = text.id;
         this.state.editText = { ...text };
-        this.clickCandidateTextId = null;
+        this.state.clickCandidateTextId = null;
         this.state.draggingText = null;
         // 切换到文字工具并刷新显示
         if (this.activeTool !== 'text') this.switchTool('text');
@@ -402,15 +412,18 @@ export class App {
   handleTouchStart(e) {
     if (e.touches.length >= 2) {
       e.preventDefault();
+      this.state.clickCandidateTextId = null; // 取消文字点击候选
       // 检测手指下方是否有文字（用第一个手指位置）
       const hit = this.findTextUnderFinger(e.touches[0]);
       if (hit) {
         this.state.pinchTextId = hit.text.id;
         this.state.pinchTextStartSize = hit.text.fontSize;
+        this.state.selectedTextId = hit.text.id;
       } else {
         this.state.pinchTextId = null;
       }
       this.state.isPinching = true;
+      this.state.touchMoved = false;
       this.state.pinchStartDist = this.getTouchDistance(e);
       this.state.pinchStartZoom = this.state.zoom;
       this.state.isDragging = false;
