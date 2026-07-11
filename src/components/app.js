@@ -20,6 +20,7 @@ export class App {
       rotation: DEFAULTS.rotation,
       isDragging: false, dragStartX: 0, dragStartY: 0,
       dragTextStartPos: null, // { x, y } 文字拖动开始时原始位置
+      dragCachedRect: null,   // 拖动开始时缓存的wrapper尺寸
       isPinching: false, pinchStartDist: 0, pinchStartZoom: 100,
       touchStartTime: 0, touchMoved: false,
       frameEnabled: false, frameImages: {}, currentFrameKey: null, puzzleCanvas: null,
@@ -401,7 +402,13 @@ export class App {
     this.els.editorArea.classList.remove('blurred');
 
     const text = this.state.texts.find(t => t.id === this.state.editingTextId);
-    if (!text) { this.state.editingTextId = null; return; }
+    if (!text) {
+      this.state.editingTextId = null;
+      this.state.isTextInputOpen = false;
+      this.state.textJustCreated = false;
+      this._textInputOriginal = null;
+      return;
+    }
 
     if (save) {
       // 确认：保持文字
@@ -562,6 +569,9 @@ export class App {
     const canvas = this.els.previewCanvas;
     const ctx = canvas.getContext('2d');
 
+    // ★ 缓存wrapper尺寸（拖动过程中不再重新计算，避免强制重排）
+    this.state.dragCachedRect = { w: r.width, h: r.height, left: r.left, top: r.top };
+
     // 检测文字命中（含角控件）
     const hit = hitTestText(ctx, this.state.texts, canvas.width, canvas.height, px, py, this.state.selectedTextId);
     if (hit) {
@@ -636,24 +646,27 @@ export class App {
         this.state.dragTextStartPos = { x: text.x, y: text.y };
         this.state.clickCandidateTextId = null;
         this.state.touchMoved = true;
+        // 拖动开始时缓存一次wrapper尺寸
+        if (!this.state.dragCachedRect) {
+          const r = this.els.canvasWrapper.getBoundingClientRect();
+          this.state.dragCachedRect = { w: r.width, h: r.height, left: r.left, top: r.top };
+        }
       }
     }
 
     if (this.state.draggingText) {
-      // 增量式拖动：基于起始位置 + 屏幕偏移量映射
-      const r = this.els.canvasWrapper.getBoundingClientRect();
-      const deltaX = (pos.x - this.state.dragStartX) / r.width;
-      const deltaY = (pos.y - this.state.dragStartY) / r.height;
-      const orig = this.state.dragTextStartPos;
-      if (orig) {
-        this.state.draggingText.x = Math.max(0.02, Math.min(0.98, orig.x + deltaX));
-        this.state.draggingText.y = Math.max(0.02, Math.min(0.98, orig.y + deltaY));
-      } else {
-        this.state.draggingText.x = (pos.x - r.left) / r.width;
-        this.state.draggingText.y = (pos.y - r.top) / r.height;
+      // 增量式拖动：使用缓存的wrapper尺寸，避免反复强制重排
+      const rect = this.state.dragCachedRect;
+      if (rect) {
+        const deltaX = (pos.x - this.state.dragStartX) / rect.w;
+        const deltaY = (pos.y - this.state.dragStartY) / rect.h;
+        const orig = this.state.dragTextStartPos;
+        if (orig) {
+          this.state.draggingText.x = orig.x + deltaX;
+          this.state.draggingText.y = orig.y + deltaY;
+        }
       }
-      this.state.draggingText.x = Math.max(0.02, Math.min(0.98, this.state.draggingText.x));
-      this.state.draggingText.y = Math.max(0.02, Math.min(0.98, this.state.draggingText.y));
+      // 钳位边界
       this.state.draggingText.x = Math.max(0.02, Math.min(0.98, this.state.draggingText.x));
       this.state.draggingText.y = Math.max(0.02, Math.min(0.98, this.state.draggingText.y));
       this.refreshDisplay();
@@ -690,6 +703,7 @@ export class App {
     this.state.clickCandidateTextId = null;
     this.state.draggingText = null;
     this.state.dragTextStartPos = null;
+    this.state.dragCachedRect = null;
     if (this.state.isDragging) {
       this.state.isDragging = false;
       this.els.canvasWrapper.classList.remove('dragging');
@@ -768,6 +782,10 @@ export class App {
         this.scheduleRender();
       }
     } else if (!this.state.isPinching && e.touches.length === 1) {
+      // ★ 正在拖动/候选拖动时阻止浏览器拦截（滚动/长按菜单）
+      if (this.state.draggingText || this.state.clickCandidateTextId || this.state.isDragging) {
+        e.preventDefault();
+      }
       const dx = Math.abs(e.touches[0].clientX - this.state.dragStartX);
       const dy = Math.abs(e.touches[0].clientY - this.state.dragStartY);
       if (dx > 5 || dy > 5) this.state.touchMoved = true;
@@ -813,6 +831,8 @@ export class App {
   }
 
   resetToUpload() {
+    // 先关闭文字输入弹窗（必须在清空texts之前）
+    if (this.state.isTextInputOpen) this.closeTextInput(false);
     this.state.image = null;
     this.state.originalFile = null;
     this.state.puzzleCanvas = null;
@@ -823,7 +843,6 @@ export class App {
     this.els.uploadArea.style.display = 'flex';
     this.els.editorArea.style.display = 'none';
     this.els.fileInput.value = '';
-    this.closeTextInput(false);
   }
 
   resetImage() {
@@ -887,10 +906,27 @@ export class App {
     const pc = this.state.puzzleCanvas;
     const { w: pvw, h: pvh } = this._baseDim;
 
+    // ★ 始终以拼图尺寸渲染文字到一个独立覆盖层
+    //   这样文字位置/大小只依赖拼图坐标，不受相框或屏幕尺寸影响
+    const hasTexts = this.state.texts.length > 0;
+    let textLayer = null;
+    if (hasTexts) {
+      textLayer = document.createElement('canvas');
+      textLayer.width = pvw;
+      textLayer.height = pvh;
+      renderTexts(textLayer.getContext('2d'), this.state.texts, pvw, pvh, this.state.selectedTextId, {
+        hideControls: this.state.isTextInputOpen,
+      });
+    }
+
     if (this.state.frameEnabled) {
       const frameKey = this.state.currentFrameKey;
       const frameImg = this.state.frameImages[frameKey];
-      if (!frameImg || !frameKey) { this.drawBaseOnly(canvas, ctx, pc, pvw, pvh); this.drawTexts(canvas); return; }
+      if (!frameImg || !frameKey) {
+        this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
+        if (textLayer) ctx.drawImage(textLayer, 0, 0);
+        return;
+      }
       const cfg = FRAME_CONFIG[frameKey];
       const wrapper = this.els.canvasWrapper;
       const wrapW = wrapper.clientWidth;
@@ -909,13 +945,31 @@ export class App {
       canvas.style.width = '';
       canvas.style.height = '';
       renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
+
+      // ★ 将文字覆盖层缩放到相框内框区域（与拼图对齐）
+      if (textLayer) {
+        const scaleX = dsW / cfg.frameWidth;
+        const scaleY = dsH / cfg.frameHeight;
+        const innerLeft = cfg.innerLeft * scaleX;
+        const innerTop = cfg.innerTop * scaleY;
+        const innerW = cfg.innerWidth * scaleX;
+        const innerH = cfg.innerHeight * scaleY;
+        const pcAspect = pvw / pvh;
+        const innerAspect = cfg.innerWidth / cfg.innerHeight;
+        let drawW, drawH, drawX, drawY;
+        if (pcAspect > innerAspect) {
+          drawW = innerW; drawH = innerW / pcAspect;
+          drawX = innerLeft; drawY = innerTop + (innerH - drawH) / 2;
+        } else {
+          drawH = innerH; drawW = innerH * pcAspect;
+          drawX = innerLeft + (innerW - drawW) / 2; drawY = innerTop;
+        }
+        ctx.drawImage(textLayer, drawX, drawY, drawW, drawH);
+      }
     } else {
       this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
+      if (textLayer) ctx.drawImage(textLayer, 0, 0);
     }
-    // 文字在相框之上（输入模式隐藏角控件）
-    renderTexts(ctx, this.state.texts, canvas.width, canvas.height, this.state.selectedTextId, {
-      hideControls: this.state.isTextInputOpen,
-    });
   }
 
   drawBaseOnly(canvas, ctx, pc, pvw, pvh) {
@@ -928,8 +982,7 @@ export class App {
   }
 
   drawTexts(canvas) {
-    const ctx = canvas.getContext('2d');
-    renderTexts(ctx, this.state.texts, canvas.width, canvas.height, this.state.selectedTextId);
+    // 不再使用，文字通过独立覆盖层渲染
   }
 
   // ===================== 下载 =====================
