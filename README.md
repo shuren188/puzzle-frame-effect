@@ -5,7 +5,7 @@
 > **一款轻量级在线拼图DIY编辑工具** — 上传照片，自由拼图裁剪、叠加透明相框、添加艺术文字，一键下载高清效果图。纯浏览器端运行，无需安装任何软件。
 
 [![在线体验](https://img.shields.io/badge/🌐_在线体验-点击前往-5ce5e5?style=for-the-badge)](https://shuren188.github.io/puzzle-frame-effect/)
-[![版本](https://img.shields.io/badge/最新版本-v4.15.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
+[![版本](https://img.shields.io/badge/最新版本-v4.16.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
 [![许可](https://img.shields.io/badge/开源许可-MIT-b794f4)](LICENSE)
 ![构建状态](https://img.shields.io/badge/构建-通过-success)
 ![生产依赖](https://img.shields.io/badge/生产依赖-零依赖-5ce5e5)
@@ -221,9 +221,9 @@ npm run deploy
    - 手动输入 HEX 色值（如 `#FF5733`）
    - 点击「确定」应用颜色
 
-### 🖼️ 第五步：添加相框（可选）
+### 🖼️ 第五步：相框预览（可选）
 
-点击预览区右上角的 **「添加相框」开关**：
+点击预览区右上角的 **「相框预览」开关**：
 
 - 开启后，系统自动根据当前拼图尺寸和方向（横版/竖版）匹配对应的透明相框
 - 相框覆盖在拼图之上，**文字也同时显示在相框之上**
@@ -587,6 +587,16 @@ npm run build && npm run deploy
 ## 📋 版本发布记录
 
 > 每次版本更新都会在此记录。版本号格式：`v主版本.次版本.修订号`
+
+### v4.16.0 — 移除 renderFrame 中 Fit 逻辑，PuzzleCanvas 直接填满内框
+> 2026-07-11
+
+- **核心修改** `renderFrame()` 删除 `pcAspect / innerAspect` 判断和 `drawW/drawH/drawX/drawY` 计算
+- **修改** PuzzleCanvas 不再重新缩放适配内框比例，而是 `drawImage` 直接填满 `(innerLeft, innerTop, innerWidth, innerHeight)`
+- **同步** `refreshDisplay()` 中文字层和安全区域定位同样删除重复的 aspect 计算
+- **原则** Frame Preview 不参与任何图片计算 — 不 Aspect、不 Fit、不 Cover、不 Center
+- **原则** Frame Preview 是 Editor 的镜像（Mirror），不是重新渲染
+- **零影响** 所有已有编辑功能不变
 
 ### v4.15.0 — 统一渲染架构：ClipPath 替代裁剪画布 + 导出含相框
 > 2026-07-11
