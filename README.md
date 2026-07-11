@@ -5,7 +5,7 @@
 > **一款轻量级在线拼图DIY编辑工具** — 上传照片，自由拼图裁剪、叠加透明相框、添加艺术文字，一键下载高清效果图。纯浏览器端运行，无需安装任何软件。
 
 [![在线体验](https://img.shields.io/badge/🌐_在线体验-点击前往-5ce5e5?style=for-the-badge)](https://shuren188.github.io/puzzle-frame-effect/)
-[![版本](https://img.shields.io/badge/最新版本-v4.9.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
+[![版本](https://img.shields.io/badge/最新版本-v4.10.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
 [![许可](https://img.shields.io/badge/开源许可-MIT-b794f4)](LICENSE)
 ![构建状态](https://img.shields.io/badge/构建-通过-success)
 ![生产依赖](https://img.shields.io/badge/生产依赖-零依赖-5ce5e5)
@@ -582,6 +582,17 @@ npm run build && npm run deploy
 ## 📋 版本发布记录
 
 > 每次版本更新都会在此记录。版本号格式：`v主版本.次版本.修订号`
+
+### v4.10.0 — 详尽版项目介绍/安装步骤/使用说明
+> 2026-07-11
+
+- **重写** README.md 完整覆盖四大板块：项目介绍、安装步骤、使用说明、系统架构
+- **新增【项目介绍】**：工具定位、适用场景（6种场景）、核心优势（5项）、适用人群
+- **新增【安装步骤】**：环境要求检查 → 克隆 → 安装 → 开发 → 构建 → 部署，含每个命令的输出示例和常见问题解答
+- **新增【使用说明】**：7 步完整图文指南，含操作对照表、实用技巧提示
+- **新增【系统架构】**：架构图、渲染流程、关键设计决策（5项）、完整项目结构树（每个文件标注功能说明）
+- **新增【常见问题FAQ】**：解答 7 个高频问题
+- **新增【开源许可】**：MIT 许可声明
 
 ### v4.9.0 — GitHub 首页 README 优化
 > 2026-07-11
