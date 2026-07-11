@@ -89,9 +89,9 @@ export class App {
           if (this.state.frameEnabled) this.refreshDisplay();
         });
       }
-      // 安全区域提示：相框开启时隐藏虚线（相框自身已遮盖），未加相框时显示
+      // 安全区域提示：用户上传图片后始终显示（不依赖相框开关状态）
       if (this.els.safeAreaHint) {
-        this.els.safeAreaHint.classList.toggle('visible', !this.state.frameEnabled);
+        this.els.safeAreaHint.classList.add('visible');
       }
       this.updateInfoBar();
       this.refreshDisplay();
@@ -847,6 +847,9 @@ export class App {
 
       // 上传后保持默认缩放（白边填充模式），不自动执行智能适配
       this.state.zoom = DEFAULTS.zoom;
+
+      // 上传后显示安全区域提示文字
+      if (this.els.safeAreaHint) this.els.safeAreaHint.classList.add('visible');
 
       this.hideLoading();
       this.scheduleRender();
