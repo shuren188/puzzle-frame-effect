@@ -63,6 +63,7 @@ export class App {
     this.els.textInputOverlay = $('textInputOverlay');
     this.els.layerMenu = $('layerMenu');
     this.els.safeAreaHint = $('safeAreaHint');
+    this.els.frameDisclaimer = $('frameDisclaimer');
     this.els.smartToggle = $('smartToggle');
   }
 
@@ -89,9 +90,10 @@ export class App {
           if (this.state.frameEnabled) this.refreshDisplay();
         });
       }
-      // 安全区域提示：用户上传图片后始终显示（不依赖相框开关状态）
-      if (this.els.safeAreaHint) {
-        this.els.safeAreaHint.classList.add('visible');
+      // 切换安全区域提示 / 相框声明（同一位置，根据相框开关切换）
+      if (this.els.safeAreaHint && this.els.frameDisclaimer) {
+        this.els.safeAreaHint.classList.toggle('visible', !this.state.frameEnabled);
+        this.els.frameDisclaimer.classList.toggle('visible', this.state.frameEnabled);
       }
       this.updateInfoBar();
       this.refreshDisplay();
@@ -848,8 +850,9 @@ export class App {
       // 上传后保持默认缩放（白边填充模式），不自动执行智能适配
       this.state.zoom = DEFAULTS.zoom;
 
-      // 上传后显示安全区域提示文字
+      // 上传后显示安全区域提示，隐藏相框声明
       if (this.els.safeAreaHint) this.els.safeAreaHint.classList.add('visible');
+      if (this.els.frameDisclaimer) this.els.frameDisclaimer.classList.remove('visible');
 
       this.hideLoading();
       this.scheduleRender();
