@@ -73,7 +73,7 @@ body::after{content:'';position:fixed;bottom:-25%;right:-20%;width:55%;height:50
 .drag-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(92,229,229,0.06);font-size:.9rem;pointer-events:none;opacity:0;transition:opacity .3s}
 .canvas-wrap.dragging .drag-hint{opacity:1}
 
-/* ========== 相框安全区域提示 ========== */
+/* 安全区域提示：相框开启时隐藏（相框自身已遮盖），编辑时显示 */
 .safe-area-hint{position:absolute;bottom:4px;left:4px;right:4px;padding:4px 8px;font-size:.52rem;color:rgba(92,229,229,0.7);background:rgba(0,0,0,0.5);border-radius:4px;text-align:center;pointer-events:none;opacity:0;transition:opacity .4s ease;line-height:1.4;z-index:3}
 .safe-area-hint.visible{opacity:1}
 

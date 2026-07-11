@@ -5,7 +5,7 @@
 > **一款轻量级在线拼图DIY编辑工具** — 上传照片，自由拼图裁剪、叠加透明相框、添加艺术文字，一键下载高清效果图。纯浏览器端运行，无需安装任何软件。
 
 [![在线体验](https://img.shields.io/badge/🌐_在线体验-点击前往-5ce5e5?style=for-the-badge)](https://shuren188.github.io/puzzle-frame-effect/)
-[![版本](https://img.shields.io/badge/最新版本-v4.16.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
+[![版本](https://img.shields.io/badge/最新版本-v4.17.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
 [![许可](https://img.shields.io/badge/开源许可-MIT-b794f4)](LICENSE)
 ![构建状态](https://img.shields.io/badge/构建-通过-success)
 ![生产依赖](https://img.shields.io/badge/生产依赖-零依赖-5ce5e5)
@@ -587,6 +587,15 @@ npm run build && npm run deploy
 ## 📋 版本发布记录
 
 > 每次版本更新都会在此记录。版本号格式：`v主版本.次版本.修订号`
+
+### v4.17.0 — 相框预览数据源改为 Editor Canvas 截图
+> 2026-07-11
+
+- **核心重构** Frame Preview 不再读取 PuzzleCanvas（pc），改为读取**完整的 Editor Canvas**
+- **流程** ①渲染完整编辑区画面（Editor Canvas = pc + 文字层）→ ②截取安全区域（蓝色虚线内）→ ③将截图传入 renderFrame() 放入相框内框并覆盖相框 PNG
+- **删除** 所有 pc + textLayer 的二次定位/蒙版/裁剪逻辑，统一由 Editor Canvas 截图替代
+- **原则** 编辑区蓝色虚线内看到什么，相框预览就 100% 显示什么，逐像素一致
+- **导出** 下载流程同样基于完整的拼图+文字画面（与编辑器相同的 ImageState）
 
 ### v4.16.0 — 移除 renderFrame 中 Fit 逻辑，PuzzleCanvas 直接填满内框
 > 2026-07-11
