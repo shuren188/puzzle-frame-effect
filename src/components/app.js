@@ -1121,7 +1121,7 @@ export class App {
       const MAX = 4096;
       if (pxW > MAX || pxH > MAX) { const r = Math.min(MAX / pxW, MAX / pxH); pxW = Math.round(pxW * r); pxH = Math.round(pxH * r); }
 
-      // === 渲染完整拼图 + 文字（使用与编辑器相同的 ImageState） ===
+      // === 始终输出完整拼图 + 文字（相框仅预览，不参与下载） ===
       const puzzle = document.createElement('canvas');
       puzzle.width = pxW;
       puzzle.height = pxH;
@@ -1132,57 +1132,10 @@ export class App {
       if (this.state.texts.length > 0) {
         renderTexts(puzzle.getContext('2d'), this.state.texts, pxW, pxH, null, { hideControls: true });
       }
-
-      // === 相框模式：裁剪至安全区域 + 叠加相框 ===
-      if (this.state.frameEnabled && this.state.currentFrameKey && this.state.frameImages[this.state.currentFrameKey]) {
-        const frameKey = this.state.currentFrameKey;
-        const frameImg = this.state.frameImages[frameKey];
-        const cfg = FRAME_CONFIG[frameKey];
-        const isRotated = this.state.rotation % 180 !== 0;
-        const physW = isRotated ? size.heightCm : size.widthCm;
-        const physH = isRotated ? size.widthCm : size.heightCm;
-
-        // 安全区域裁剪（与编辑器完全一致的算法）
-        const si = calcSafeAreaInset(pxW, pxH, physW, physH);
-        const cropX = si.insetX;
-        const cropY = si.insetY;
-        const cropW = pxW - 2 * cropX;
-        const cropH = pxH - 2 * cropY;
-
-        // 将裁剪后的拼图匹配到相框比例
-        const frameAspect = cfg.frameWidth / cfg.frameHeight;
-        let dsW, dsH;
-        if (pxW / pxH > frameAspect) {
-          dsH = pxH; dsW = Math.round(dsH * frameAspect);
-        } else {
-          dsW = pxW; dsH = Math.round(dsW / frameAspect);
-        }
-
-        const out = document.createElement('canvas');
-        out.width = dsW;
-        out.height = dsH;
-        const octx = out.getContext('2d');
-
-        // 裁剪后的拼图
-        const cropped = document.createElement('canvas');
-        cropped.width = cropW;
-        cropped.height = cropH;
-        cropped.getContext('2d').drawImage(puzzle, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-
-        // 用 frameProcessor 渲染：只显示安全区域内内容 + 相框
-        renderFrame(octx, cropped, frameKey, frameImg, dsW, dsH);
-
-        const filename = getOutputFilename(size.name, mode);
-        await new Promise(r => setTimeout(r, 50));
-        downloadImage(out, filename.replace('.png', '_framed.png'));
-        this.showToast('带相框效果图已生成，开始下载');
-      } else {
-        // === 无相框模式：直接输出拼图 + 文字 ===
-        const filename = getOutputFilename(size.name, mode);
-        await new Promise(r => setTimeout(r, 50));
-        downloadImage(puzzle, filename);
-        this.showToast('图片已生成，开始下载');
-      }
+      const filename = getOutputFilename(size.name, mode);
+      await new Promise(r => setTimeout(r, 50));
+      downloadImage(puzzle, filename);
+      this.showToast('图片已生成，开始下载');
     } catch (err) { this.showToast('下载失败，请重试');
     } finally {
       this.els.downloadBtn.disabled = false;
