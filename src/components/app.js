@@ -975,15 +975,17 @@ export class App {
     const pc = this.state.puzzleCanvas;
     const { w: pvw, h: pvh } = this._baseDim;
 
-    // ★ 始终以拼图尺寸渲染文字到一个独立覆盖层
-    //   这样文字位置/大小只依赖拼图坐标，不受相框或屏幕尺寸影响
-    const hasTexts = this.state.texts.length > 0;
-    let textLayer = null;
-    if (hasTexts) {
-      textLayer = document.createElement('canvas');
-      textLayer.width = pvw;
-      textLayer.height = pvh;
-      renderTexts(textLayer.getContext('2d'), this.state.texts, pvw, pvh, this.state.selectedTextId, {
+    // ★ 第一步：渲染完整的编辑区画面（Editor Canvas）
+    //    包含：PuzzleCanvas + 文字层
+    //    这是一个 pvw×pvh 的完整画面
+    const editorCanvas = document.createElement('canvas');
+    editorCanvas.width = pvw;
+    editorCanvas.height = pvh;
+    const ectx = editorCanvas.getContext('2d');
+    ectx.drawImage(pc, 0, 0);
+    // 文字层
+    if (this.state.texts.length > 0) {
+      renderTexts(ectx, this.state.texts, pvw, pvh, this.state.selectedTextId, {
         hideControls: this.state.isTextInputOpen,
       });
     }
@@ -999,15 +1001,14 @@ export class App {
       const frameImg = this.state.frameImages[frameKey];
 
       if (!frameImg || !frameKey) {
+        // 相框未加载：显示编辑区画面 + 安全区域辅助线
         canvas.width = pvw;
         canvas.height = pvh;
         canvas.style.width = '';
         canvas.style.height = '';
         canvas.classList.remove('frame-active');
-        ctx.drawImage(pc, 0, 0);
-        // 安全区域辅助层（虚线蒙版，仅编辑参考不参与缩放）
+        ctx.drawImage(editorCanvas, 0, 0);
         renderSafeArea(ctx, canvas.width, canvas.height, safePhysW, safePhysH);
-        if (textLayer) ctx.drawImage(textLayer, 0, 0);
         return;
       }
       const cfg = FRAME_CONFIG[frameKey];
@@ -1028,50 +1029,31 @@ export class App {
       canvas.style.width = '';
       canvas.style.height = '';
 
-      // ★ 使用原始 PuzzleCanvas，不裁剪、不重新适配
-      //    renderFrame 将完整 pc 按原比例绘制到相框内框
-      renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
+      // ★ 第二步：从 Editor Canvas 中截取安全区域（蓝色虚线内）
+      //    这就是用户在编辑区看到的最终画面的一部分
+      const si = calcSafeAreaInset(pvw, pvh, safePhysW, safePhysH);
+      const safeX = si.insetX;
+      const safeY = si.insetY;
+      const safeW = pvw - 2 * si.insetX;
+      const safeH = pvh - 2 * si.insetY;
 
-      // ★ 计算安全区域在显示坐标中的位置（覆盖层，不参与图片缩放计算）
-      const scaleX_ = dsW / cfg.frameWidth;
-      const scaleY_ = dsH / cfg.frameHeight;
-      const innerLeft_ = cfg.innerLeft * scaleX_;
-      const innerTop_ = cfg.innerTop * scaleY_;
-      const innerW_ = cfg.innerWidth * scaleX_;
-      const innerH_ = cfg.innerHeight * scaleY_;
-      // ★ PuzzleCanvas 直接填满内框区域，不进行任何 aspect 重新计算
-      const drX = innerLeft_, drY = innerTop_, drW_ = innerW_, drH_ = innerH_;
-      const pcW_ = pc.width, pcH_ = pc.height;
+      const snapshot = document.createElement('canvas');
+      snapshot.width = safeW;
+      snapshot.height = safeH;
+      snapshot.getContext('2d').drawImage(editorCanvas, safeX, safeY, safeW, safeH, 0, 0, safeW, safeH);
 
-      // ★ 安全区域蒙版（将虚线外部分用半透明黑色覆盖，模拟相框遮挡）
-      const si_ = calcSafeAreaInset(pcW_, pcH_, safePhysW, safePhysH);
-      const safeX = drX + si_.insetX * (drW_ / pcW_);
-      const safeY = drY + si_.insetY * (drH_ / pcH_);
-      const safeW = (pcW_ - 2 * si_.insetX) * (drW_ / pcW_);
-      const safeH = (pcH_ - 2 * si_.insetY) * (drH_ / pcH_);
-
-      ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.fillRect(drX, drY, drW_, safeY - drY);
-      ctx.fillRect(drX, safeY + safeH, drW_, (drY + drH_) - (safeY + safeH));
-      ctx.fillRect(drX, safeY, safeX - drX, safeH);
-      ctx.fillRect(safeX + safeW, safeY, (drX + drW_) - (safeX + safeW), safeH);
-      ctx.restore();
-
-      // ★ 文字覆盖层：裁剪到安全区域后绘制
-      if (textLayer) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(safeX, safeY, safeW, safeH);
-        ctx.clip();
-        ctx.drawImage(textLayer, drX, drY, drW_, drH_);
-        ctx.restore();
-      }
+      // ★ 第三步：将安全区域截图绘制到相框内框并覆盖相框PNG
+      //    renderFrame 只负责：①放截图到内框 ②叠加相框
+      renderFrame(ctx, snapshot, frameKey, frameImg, dsW, dsH);
     } else {
-      this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
-      // ★ 未加相框时：显示安全区域辅助线，提醒用户8mm遮挡范围
+      // ★ 无相框模式：显示编辑区画面 + 安全区域辅助线
+      canvas.classList.remove('frame-active');
+      canvas.style.width = '';
+      canvas.style.height = '';
+      canvas.width = pvw;
+      canvas.height = pvh;
+      ctx.drawImage(editorCanvas, 0, 0);
       renderSafeArea(ctx, canvas.width, canvas.height, safePhysW, safePhysH);
-      if (textLayer) ctx.drawImage(textLayer, 0, 0);
     }
   }
 
