@@ -1108,33 +1108,29 @@ export class App {
       this.els.downloadBtn.style.opacity = '.5';
       const size = this.state.selectedSize;
       const mode = this.state.quality;
-      const nr = this.state.rotation % 180 !== 0;
-      const cmW = nr ? size.heightCm : size.widthCm, cmH = nr ? size.widthCm : size.heightCm;
-      const aspect = cmW / cmH;
-      const imgW = this.state.image.naturalWidth;
-      const imgH = this.state.image.naturalHeight;
-      let pxW, pxH;
-      if (imgW / imgH > aspect) { pxW = Math.round(imgW); pxH = Math.round(imgW / aspect); }
-      else { pxH = Math.round(imgH); pxW = Math.round(imgH * aspect); }
+      const pc = this.state.puzzleCanvas;
+      if (!pc || !this._baseDim) { this.showToast('请等待图片加载完成'); return; }
+
+      // ★ 基于预览画布缩放，保证下载内容与编辑器完全一致
+      const { w: baseW, h: baseH } = this._baseDim;
       const mul = mode > 0 ? mode : 1;
-      pxW = Math.round(pxW * mul); pxH = Math.round(pxH * mul);
+      let pxW = Math.round(baseW * mul);
+      let pxH = Math.round(baseH * mul);
       const MAX = 4096;
       if (pxW > MAX || pxH > MAX) { const r = Math.min(MAX / pxW, MAX / pxH); pxW = Math.round(pxW * r); pxH = Math.round(pxH * r); }
 
-      // === 始终输出完整拼图 + 文字（相框仅预览，不参与下载） ===
-      const puzzle = document.createElement('canvas');
-      puzzle.width = pxW;
-      puzzle.height = pxH;
-      renderImage(puzzle.getContext('2d'), this.state.image, pxW, pxH, {
-        zoom: this.state.zoom, offsetX: this.state.offsetX || 0, offsetY: this.state.offsetY || 0,
-        rotation: this.state.rotation, fillColor: this.state.fillColor,
-      });
+      const out = document.createElement('canvas');
+      out.width = pxW;
+      out.height = pxH;
+      const octx = out.getContext('2d');
+      octx.drawImage(pc, 0, 0, baseW, baseH, 0, 0, pxW, pxH);
+
       if (this.state.texts.length > 0) {
-        renderTexts(puzzle.getContext('2d'), this.state.texts, pxW, pxH, null, { hideControls: true });
+        renderTexts(octx, this.state.texts, pxW, pxH, null, { hideControls: true });
       }
       const filename = getOutputFilename(size.name, mode);
       await new Promise(r => setTimeout(r, 50));
-      downloadImage(puzzle, filename);
+      downloadImage(out, filename);
       this.showToast('图片已生成，开始下载');
     } catch (err) { this.showToast('下载失败，请重试');
     } finally {
