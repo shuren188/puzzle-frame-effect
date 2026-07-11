@@ -997,12 +997,29 @@ export class App {
     if (this.state.frameEnabled) {
       const frameKey = this.state.currentFrameKey;
       const frameImg = this.state.frameImages[frameKey];
-      // ★ 计算安全区域裁剪偏移：相框预览时只显示虚线框内部分（8mm 内缩）
+
+      // ★ 计算8mm安全区域裁剪偏移（物理尺寸 → Canvas像素）
       const si = calcSafeAreaInset(pvw, pvh, safePhysW, safePhysH);
       const cropX = si.insetX;
       const cropY = si.insetY;
       const cropW = pvw - 2 * cropX;
       const cropH = pvh - 2 * cropY;
+
+      // ★ 裁剪 PuzzleCanvas 到安全区域（只保留虚线框内部分）
+      const croppedPc = document.createElement('canvas');
+      croppedPc.width = cropW;
+      croppedPc.height = cropH;
+      const cropCtx = croppedPc.getContext('2d');
+      cropCtx.drawImage(pc, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+      // ★ 裁剪文字覆盖层到同一安全区域
+      let croppedTextLayer = null;
+      if (textLayer) {
+        croppedTextLayer = document.createElement('canvas');
+        croppedTextLayer.width = cropW;
+        croppedTextLayer.height = cropH;
+        croppedTextLayer.getContext('2d').drawImage(textLayer, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+      }
 
       if (!frameImg || !frameKey) {
         canvas.width = pvw;
@@ -1010,9 +1027,8 @@ export class App {
         canvas.style.width = '';
         canvas.style.height = '';
         canvas.classList.remove('frame-active');
-        // 裁剪绘制到安全区域
-        ctx.drawImage(pc, cropX, cropY, cropW, cropH, 0, 0, pvw, pvh);
-        if (textLayer) ctx.drawImage(textLayer, cropX, cropY, cropW, cropH, 0, 0, pvw, pvh);
+        ctx.drawImage(croppedPc, 0, 0, pvw, pvh);
+        if (croppedTextLayer) ctx.drawImage(croppedTextLayer, 0, 0, pvw, pvh);
         return;
       }
       const cfg = FRAME_CONFIG[frameKey];
@@ -1032,28 +1048,28 @@ export class App {
       canvas.height = dsH;
       canvas.style.width = '';
       canvas.style.height = '';
-      renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
+      // ★ 传入裁剪后的画布：相框只显示安全区域内的图片（虚线外8mm被裁剪）
+      renderFrame(ctx, croppedPc, frameKey, frameImg, dsW, dsH);
 
-      // ★ 将文字覆盖层缩放到相框内框区域（与拼图对齐），也裁剪到安全区域
-      if (textLayer) {
+      // ★ 将裁剪后的文字覆盖层缩放到相框内框区域
+      if (croppedTextLayer) {
         const scaleX = dsW / cfg.frameWidth;
         const scaleY = dsH / cfg.frameHeight;
         const innerLeft = cfg.innerLeft * scaleX;
         const innerTop = cfg.innerTop * scaleY;
         const innerW = cfg.innerWidth * scaleX;
         const innerH = cfg.innerHeight * scaleY;
-        const pcAspect_ = cropW / cropH;
+        const ctAspect = cropW / cropH;
         const innerAspect = cfg.innerWidth / cfg.innerHeight;
         let drawW, drawH, drawX, drawY;
-        if (pcAspect_ > innerAspect) {
-          drawW = innerW; drawH = innerW / pcAspect_;
+        if (ctAspect > innerAspect) {
+          drawW = innerW; drawH = innerW / ctAspect;
           drawX = innerLeft; drawY = innerTop + (innerH - drawH) / 2;
         } else {
-          drawH = innerH; drawW = innerH * pcAspect_;
+          drawH = innerH; drawW = innerH * ctAspect;
           drawX = innerLeft + (innerW - drawW) / 2; drawY = innerTop;
         }
-        // 从裁剪后的坐标系中绘制文字覆盖层
-        ctx.drawImage(textLayer, cropX, cropY, cropW, cropH, drawX, drawY, drawW, drawH);
+        ctx.drawImage(croppedTextLayer, drawX, drawY, drawW, drawH);
       }
     } else {
       this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
