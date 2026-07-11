@@ -97,6 +97,41 @@ export function getPreviewSize(targetW, targetH, maxHeight = 260) {
 }
 
 /**
+ * 计算智能适配缩放值（object-fit: cover 算法）
+ * 使图片完整覆盖拼图区域，不留白边，保持比例，居中显示
+ * @param {number} imgW - 图片原始宽度 (naturalWidth)
+ * @param {number} imgH - 图片原始高度 (naturalHeight)
+ * @param {number} canvasW - 目标画布宽度
+ * @param {number} canvasH - 目标画布高度
+ * @param {number} rotation - 当前旋转角度 (0/90/180/270)
+ * @returns {{ zoom: number, offsetX: number, offsetY: number }}
+ */
+export function calculateCoverZoom(imgW, imgH, canvasW, canvasH, rotation) {
+  const nr = rotation % 180 !== 0;
+  const effW = nr ? imgH : imgW;
+  const effH = nr ? imgW : imgH;
+  const imgAspect = effW / effH;
+  const targetAspect = canvasW / canvasH;
+
+  let zoom;
+  if (imgAspect > targetAspect) {
+    // 图片比画布更宽 → 以高度为约束
+    // zoom=100 时 imgH = canvasH, imgW < canvasW
+    // 需要 imgW ≥ canvasW → zoom = (canvasW / imgW_at_100) * 100
+    zoom = Math.round((canvasH * imgAspect) / canvasW * 100);
+  } else {
+    // 图片比画布更高 → 以宽度为约束
+    // zoom=100 时 imgW = canvasW, imgH < canvasH
+    // 需要 imgH ≥ canvasH → zoom = (canvasH / imgH_at_100) * 100
+    zoom = Math.round(canvasW / (canvasH * imgAspect) * 100);
+  }
+
+  // 确保缩放范围合理（与 ZOOM_RANGE 保持一致）
+  zoom = Math.max(50, Math.min(300, zoom));
+  return { zoom, offsetX: 0, offsetY: 0 };
+}
+
+/**
  * 加载图片为 HTMLImageElement
  */
 export function loadImage(file) {

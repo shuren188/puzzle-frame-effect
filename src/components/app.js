@@ -1,9 +1,10 @@
 import { SIZES, QUALITIES, PRESET_COLORS, DEFAULTS, ZOOM_RANGE } from '../constants.js';
-import { renderImage, loadImage } from '../utils/imageProcessor.js';
+import { renderImage, loadImage, calculateCoverZoom } from '../utils/imageProcessor.js';
 import { downloadImage, getOutputFilename } from '../utils/download.js';
 import { ColorPicker } from './ColorPicker.js';
 import { renderFrame, loadFrameImage, getFrameKey, getFrameDisplaySize, FRAME_CONFIG } from '../utils/frameProcessor.js';
 import { renderTexts, createDefaultText, genTextId, hitTestText, getCornerScreenPos } from '../utils/textProcessor.js';
+import { renderSafeArea } from '../utils/safeAreaProcessor.js';
 
 const PINCH_SENSITIVITY = 0.45;
 
@@ -60,6 +61,7 @@ export class App {
     this.els.toolContentInner = $('toolContentInner');
     this.els.textInputOverlay = $('textInputOverlay');
     this.els.layerMenu = $('layerMenu');
+    this.els.safeAreaHint = $('safeAreaHint');
   }
 
   init() {
@@ -84,6 +86,10 @@ export class App {
         this.preloadCurrentFrame().then(() => {
           if (this.state.frameEnabled) this.refreshDisplay();
         });
+      }
+      // 安全区域提示：仅在相框开启时显示
+      if (this.els.safeAreaHint) {
+        this.els.safeAreaHint.classList.toggle('visible', this.state.frameEnabled);
       }
       this.updateInfoBar();
       this.refreshDisplay();
@@ -190,6 +196,7 @@ export class App {
     container.innerHTML = `
       <div class="slider-group"><label class="slider-label"><span>缩放比例</span><span class="slider-value" id="sZoomVal">${this.state.zoom}%</span></label><input type="range" class="slider" id="sZoomSlider" min="${ZOOM_RANGE.min}" max="${ZOOM_RANGE.max}" value="${this.state.zoom}" step="${ZOOM_RANGE.step}" /></div>
       <div class="rotate-group"><button class="rotate-btn" id="sRotateLeft">↺ 左转90°</button><button class="rotate-btn" id="sRotateRight">↻ 右转90°</button></div>
+      <div class="smart-adapt-row"><button class="rotate-btn smart-adapt-btn" id="smartAdaptBtn">✨ 智能适配</button></div>
     `;
     container.querySelector('#sZoomSlider').addEventListener('input', () => {
       const v = parseInt(container.querySelector('#sZoomSlider').value);
@@ -205,6 +212,9 @@ export class App {
       this.state.rotation = (this.state.rotation + 90) % 360;
       if (this.state.frameEnabled) this.preloadCurrentFrame();
       this.updateInfoBar(); this.scheduleRender();
+    });
+    container.querySelector('#smartAdaptBtn').addEventListener('click', () => {
+      this.smartAdapt();
     });
   }
 
@@ -821,6 +831,27 @@ export class App {
       this.els.toolBtns.forEach(b => b.classList.toggle('active', b.dataset.tool === 'size'));
       this.renderToolContent('size');
       this.updateInfoBar();
+
+      // 计算预览尺寸（与 rebuildPuzzle 保持一致）
+      const size = this.state.selectedSize;
+      const nr2 = this.state.rotation % 180 !== 0;
+      const cmW2 = nr2 ? size.heightCm : size.widthCm;
+      const cmH2 = nr2 ? size.widthCm : size.heightCm;
+      const wrapper2 = this.els.canvasWrapper;
+      const wrapW2 = wrapper2.clientWidth;
+      const wrapH2 = wrapper2.clientHeight;
+      const aspect2 = cmW2 / cmH2;
+      let pvw2, pvh2;
+      if (wrapW2 / wrapH2 > aspect2) { pvh2 = Math.round(wrapH2 * 0.95); pvw2 = Math.round(pvh2 * aspect2); }
+      else { pvw2 = Math.round(wrapW2 * 0.95); pvh2 = Math.round(pvw2 / aspect2); }
+      const MAX2 = window.innerWidth < 480 ? 600 : 1000;
+      if (pvw2 > MAX2) { pvw2 = MAX2; pvh2 = Math.round(pvw2 / aspect2); }
+      if (pvh2 > MAX2) { pvh2 = MAX2; pvw2 = Math.round(pvh2 * aspect2); }
+
+      // 上传后自动执行一次智能适配
+      const cover = calculateCoverZoom(img.naturalWidth, img.naturalHeight, pvw2, pvh2, this.state.rotation);
+      this.state.zoom = cover.zoom;
+
       this.hideLoading();
       this.scheduleRender();
       this.preloadAllFrames();
@@ -853,6 +884,48 @@ export class App {
     this.updateInfoBar();
     this.scheduleRender();
     this.showToast('已重置');
+  }
+
+  // ===================== 智能适配 =====================
+  smartAdapt() {
+    if (!this.state.image || !this._baseDim) return;
+    const size = this.state.selectedSize;
+    const nr = this.state.rotation % 180 !== 0;
+    const cmW = nr ? size.heightCm : size.widthCm;
+    const cmH = nr ? size.widthCm : size.heightCm;
+    const wrapper = this.els.canvasWrapper;
+    const wrapperW = wrapper.clientWidth;
+    const wrapperH = wrapper.clientHeight;
+    const aspect = cmW / cmH;
+    let pvw, pvh;
+    if (wrapperW / wrapperH > aspect) {
+      pvh = Math.round(wrapperH * 0.95);
+      pvw = Math.round(pvh * aspect);
+    } else {
+      pvw = Math.round(wrapperW * 0.95);
+      pvh = Math.round(pvw / aspect);
+    }
+    const MAX_PREV = window.innerWidth < 480 ? 600 : 1000;
+    if (pvw > MAX_PREV) { pvw = MAX_PREV; pvh = Math.round(pvw / aspect); }
+    if (pvh > MAX_PREV) { pvh = MAX_PREV; pvw = Math.round(pvh * aspect); }
+
+    const result = calculateCoverZoom(
+      this.state.image.naturalWidth,
+      this.state.image.naturalHeight,
+      pvw, pvh,
+      this.state.rotation
+    );
+    this.state.zoom = result.zoom;
+    this.state.puzzleCanvas = null;
+    this.updateInfoBar();
+    this.scheduleRender();
+
+    // 同步adjust面板的滑块
+    if (this.activeTool === 'adjust') {
+      const sZoom = this.els.toolContentInner.querySelector('#sZoomSlider');
+      const vZoom = this.els.toolContentInner.querySelector('#sZoomVal');
+      if (sZoom) { sZoom.value = result.zoom; vZoom.textContent = result.zoom + '%'; }
+    }
   }
 
   // ===================== 分层渲染 =====================
@@ -945,6 +1018,13 @@ export class App {
       canvas.style.width = '';
       canvas.style.height = '';
       renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
+
+      // ★ 相框安全显示区域（8mm 辅助层，仅编辑时显示）
+      const s = this.state.selectedSize;
+      const isRotated = this.state.rotation % 180 !== 0;
+      const safePhysW = isRotated ? s.heightCm : s.widthCm;
+      const safePhysH = isRotated ? s.widthCm : s.heightCm;
+      renderSafeArea(ctx, canvas.width, canvas.height, safePhysW, safePhysH);
 
       // ★ 将文字覆盖层缩放到相框内框区域（与拼图对齐）
       if (textLayer) {
