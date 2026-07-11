@@ -62,6 +62,7 @@ export class App {
     this.els.textInputOverlay = $('textInputOverlay');
     this.els.layerMenu = $('layerMenu');
     this.els.safeAreaHint = $('safeAreaHint');
+    this.els.smartAdaptBtn = $('smartAdaptBtn');
   }
 
   init() {
@@ -87,9 +88,9 @@ export class App {
           if (this.state.frameEnabled) this.refreshDisplay();
         });
       }
-      // 安全区域提示：仅在相框开启时显示
+      // 安全区域提示：相框开启时隐藏虚线（相框自身已遮盖），未加相框时显示
       if (this.els.safeAreaHint) {
-        this.els.safeAreaHint.classList.toggle('visible', this.state.frameEnabled);
+        this.els.safeAreaHint.classList.toggle('visible', !this.state.frameEnabled);
       }
       this.updateInfoBar();
       this.refreshDisplay();
@@ -113,6 +114,9 @@ export class App {
     document.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
     document.addEventListener('mouseup', () => this.endDrag());
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+
+    // 智能适配按钮（预览区左上角）
+    this.els.smartAdaptBtn.addEventListener('click', () => this.smartAdapt());
 
     // 图层菜单
     this.els.layerMenu.addEventListener('click', (e) => {
@@ -196,7 +200,6 @@ export class App {
     container.innerHTML = `
       <div class="slider-group"><label class="slider-label"><span>缩放比例</span><span class="slider-value" id="sZoomVal">${this.state.zoom}%</span></label><input type="range" class="slider" id="sZoomSlider" min="${ZOOM_RANGE.min}" max="${ZOOM_RANGE.max}" value="${this.state.zoom}" step="${ZOOM_RANGE.step}" /></div>
       <div class="rotate-group"><button class="rotate-btn" id="sRotateLeft">↺ 左转90°</button><button class="rotate-btn" id="sRotateRight">↻ 右转90°</button></div>
-      <div class="smart-adapt-row"><button class="rotate-btn smart-adapt-btn" id="smartAdaptBtn">✨ 智能适配</button></div>
     `;
     container.querySelector('#sZoomSlider').addEventListener('input', () => {
       const v = parseInt(container.querySelector('#sZoomSlider').value);
@@ -212,9 +215,6 @@ export class App {
       this.state.rotation = (this.state.rotation + 90) % 360;
       if (this.state.frameEnabled) this.preloadCurrentFrame();
       this.updateInfoBar(); this.scheduleRender();
-    });
-    container.querySelector('#smartAdaptBtn').addEventListener('click', () => {
-      this.smartAdapt();
     });
   }
 
@@ -832,25 +832,8 @@ export class App {
       this.renderToolContent('size');
       this.updateInfoBar();
 
-      // 计算预览尺寸（与 rebuildPuzzle 保持一致）
-      const size = this.state.selectedSize;
-      const nr2 = this.state.rotation % 180 !== 0;
-      const cmW2 = nr2 ? size.heightCm : size.widthCm;
-      const cmH2 = nr2 ? size.widthCm : size.heightCm;
-      const wrapper2 = this.els.canvasWrapper;
-      const wrapW2 = wrapper2.clientWidth;
-      const wrapH2 = wrapper2.clientHeight;
-      const aspect2 = cmW2 / cmH2;
-      let pvw2, pvh2;
-      if (wrapW2 / wrapH2 > aspect2) { pvh2 = Math.round(wrapH2 * 0.95); pvw2 = Math.round(pvh2 * aspect2); }
-      else { pvw2 = Math.round(wrapW2 * 0.95); pvh2 = Math.round(pvw2 / aspect2); }
-      const MAX2 = window.innerWidth < 480 ? 600 : 1000;
-      if (pvw2 > MAX2) { pvw2 = MAX2; pvh2 = Math.round(pvw2 / aspect2); }
-      if (pvh2 > MAX2) { pvh2 = MAX2; pvw2 = Math.round(pvh2 * aspect2); }
-
-      // 上传后自动执行一次智能适配
-      const cover = calculateCoverZoom(img.naturalWidth, img.naturalHeight, pvw2, pvh2, this.state.rotation);
-      this.state.zoom = cover.zoom;
+      // 上传后保持默认缩放（白边填充模式），不自动执行智能适配
+      this.state.zoom = DEFAULTS.zoom;
 
       this.hideLoading();
       this.scheduleRender();
@@ -992,11 +975,19 @@ export class App {
       });
     }
 
+    // 获取物理尺寸（用于安全区域计算）
+    const s = this.state.selectedSize;
+    const isRotated = this.state.rotation % 180 !== 0;
+    const safePhysW = isRotated ? s.heightCm : s.widthCm;
+    const safePhysH = isRotated ? s.widthCm : s.heightCm;
+
     if (this.state.frameEnabled) {
       const frameKey = this.state.currentFrameKey;
       const frameImg = this.state.frameImages[frameKey];
       if (!frameImg || !frameKey) {
         this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
+        // 相框未加载时：显示安全区域
+        renderSafeArea(ctx, canvas.width, canvas.height, safePhysW, safePhysH);
         if (textLayer) ctx.drawImage(textLayer, 0, 0);
         return;
       }
@@ -1019,13 +1010,7 @@ export class App {
       canvas.style.height = '';
       renderFrame(ctx, pc, frameKey, frameImg, dsW, dsH);
 
-      // ★ 相框安全显示区域（8mm 辅助层，仅编辑时显示）
-      const s = this.state.selectedSize;
-      const isRotated = this.state.rotation % 180 !== 0;
-      const safePhysW = isRotated ? s.heightCm : s.widthCm;
-      const safePhysH = isRotated ? s.widthCm : s.heightCm;
-      renderSafeArea(ctx, canvas.width, canvas.height, safePhysW, safePhysH);
-
+      // ★ 相框预览时：不显示安全区域（相框本身已遮盖）
       // ★ 将文字覆盖层缩放到相框内框区域（与拼图对齐）
       if (textLayer) {
         const scaleX = dsW / cfg.frameWidth;
@@ -1048,6 +1033,8 @@ export class App {
       }
     } else {
       this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
+      // ★ 未加相框时：显示安全区域辅助线，提醒用户8mm遮挡范围
+      renderSafeArea(ctx, canvas.width, canvas.height, safePhysW, safePhysH);
       if (textLayer) ctx.drawImage(textLayer, 0, 0);
     }
   }
