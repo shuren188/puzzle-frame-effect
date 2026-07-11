@@ -3,6 +3,8 @@
  *
  * 职责：在 PuzzleCanvas 上叠加用户添加的文字
  * 下载时文字会一并导出（与相框不同，文字属于编辑内容）
+ *
+ * 使用系统默认字体，不加载任何第三方字体资源
  */
 
 /** 生成唯一ID */
@@ -16,10 +18,8 @@ export function createDefaultText() {
   return {
     id: genTextId(),
     content: '输入文字',
-    font: 'SiYuanHei',
     fontSize: 36,
     color: '#FFFFFF',
-    rotation: 0,
     x: 0.5,   // 相对坐标 0-1
     y: 0.5,
   };
@@ -35,17 +35,17 @@ export function createDefaultText() {
 export function renderTexts(ctx, texts, canvasW, canvasH) {
   if (!texts || texts.length === 0) return;
 
+  const fontFamily = getFontFamily();
+
   texts.forEach(t => {
     if (!t.content || !t.content.trim()) return;
 
     const x = t.x * canvasW;
     const y = t.y * canvasH;
-    const fontSize = t.fontSize * (canvasW / 400); // 相对缩放
-    const fontFamily = getFontFamily(t.font);
+    const fontSize = t.fontSize * (canvasW / 400);
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate((t.rotation * Math.PI) / 180);
 
     ctx.font = `${Math.round(fontSize)}px ${fontFamily}`;
     ctx.textAlign = 'center';
@@ -67,9 +67,9 @@ export function renderTexts(ctx, texts, canvasW, canvasH) {
 /**
  * 文本度量：测量文字在当前画布尺寸下的渲染大小
  */
-export function measureText(ctx, text, font, fontSize, canvasW) {
+export function measureText(ctx, text, fontSize, canvasW) {
   const fs = fontSize * (canvasW / 400);
-  ctx.font = `${Math.round(fs)}px ${getFontFamily(font)}`;
+  ctx.font = `${Math.round(fs)}px ${getFontFamily()}`;
   const metrics = ctx.measureText(text);
   return {
     width: metrics.width,
@@ -77,6 +77,6 @@ export function measureText(ctx, text, font, fontSize, canvasW) {
   };
 }
 
-function getFontFamily(font) {
-  return '"SiYuanHei", "PingFang SC", "Microsoft YaHei", sans-serif';
+function getFontFamily() {
+  return '"PingFang SC", "Microsoft YaHei", sans-serif';
 }

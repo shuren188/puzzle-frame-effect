@@ -89,13 +89,6 @@ export class App {
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
 
     this.renderToolContent('size');
-    this.loadFonts();
-  }
-
-  async loadFonts() {
-    try {
-      await document.fonts.load('16px "SiYuanHei"');
-    } catch (e) {}
   }
 
   // ===================== 工具切换 =====================
@@ -214,12 +207,7 @@ export class App {
     container.innerHTML = `
       <div class="text-editor">
         <input class="text-input" id="textContent" type="text" value="${edit.content.replace(/"/g,'&quot;')}" placeholder="输入文字内容" maxlength="50" />
-        <div class="text-info-row">思源黑体 · 双指缩放调大小 · 拖拽移动位置</div>
-        <div class="text-slider-row">
-          <span class="text-slider-label">旋转</span>
-          <input type="range" class="slider" id="textRotate" min="-180" max="180" value="${edit.rotation}" />
-          <span class="slider-value" id="textRotateVal">${edit.rotation}°</span>
-        </div>
+        <div class="text-info-row">系统默认字体 · 双指缩放调大小 · 拖拽移动位置</div>
         <div class="text-color-row">
           <span class="text-slider-label">颜色</span>
           <div class="text-color-group">
@@ -242,26 +230,39 @@ export class App {
     container.querySelector('#textContent').addEventListener('input', (e) => {
       edit.content = e.target.value; this.state.editText = edit;
     });
-    container.querySelector('#textRotate').addEventListener('input', (e) => {
-      edit.rotation = parseInt(e.target.value);
-      container.querySelector('#textRotateVal').textContent = edit.rotation + '°';
-      this.state.editText = edit;
-    });
     container.querySelector('.text-color-group').addEventListener('click', (e) => {
       const btn = e.target.closest('.color-btn'); if (!btn) return;
       if (btn.id === 'textCustomColor') {
-        new ColorPicker({ initialColor: edit.color, onConfirm: (c) => { edit.color = c; this.state.editText = edit; this.syncColorBtns(c); this.refreshDisplay(); }});
+        new ColorPicker({ initialColor: edit.color, onConfirm: (c) => {
+          // 立即更新当前选中文字的颜色
+          if (edit.id) {
+            const target = this.state.texts.find(t => t.id === edit.id);
+            if (target) target.color = c;
+          }
+          edit.color = c; this.state.editText = edit;
+          this.syncColorBtns(c); this.refreshDisplay();
+        }});
         return;
       }
-      const c = btn.dataset.tc; edit.color = c; this.state.editText = edit;
+      const c = btn.dataset.tc;
+      // 立即更新当前选中文字的颜色
+      if (edit.id) {
+        const target = this.state.texts.find(t => t.id === edit.id);
+        if (target) target.color = c;
+      }
+      edit.color = c; this.state.editText = edit;
       this.syncColorBtns(c);
       this.refreshDisplay();
     });
     container.querySelector('#textAddBtn').addEventListener('click', () => {
       if (!edit.content.trim()) return;
       const existing = this.state.texts.find(t => t.id === edit.id);
-      if (existing) { Object.assign(existing, { content: edit.content, fontSize: edit.fontSize, color: edit.color, rotation: edit.rotation }); }
-      else { this.state.texts.push({ id: genTextId(), content: edit.content, font: 'SiYuanHei', fontSize: 36, color: edit.color, rotation: edit.rotation, x: 0.5, y: 0.5 }); }
+      if (existing) {
+        // 编辑文字：仅更新内容，位置/大小/颜色保持不变
+        existing.content = edit.content;
+      } else {
+        this.state.texts.push({ id: genTextId(), content: edit.content, fontSize: 36, color: edit.color, x: 0.5, y: 0.5 });
+      }
       this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay();
     });
     container.querySelector('#textDelBtn').addEventListener('click', () => {
