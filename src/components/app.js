@@ -629,6 +629,9 @@ export class App {
     this.state.isDragging = true;
     this.state.draggingText = null;
     this.els.canvasWrapper.classList.add('dragging');
+    // ★ 保存拖动开始时的偏移量（用于增量式拖动，避免每次新拖动都跳回0）
+    this.state.dragStartOffsetX = this.state.offsetX || 0;
+    this.state.dragStartOffsetY = this.state.offsetY || 0;
     this.state.dragStartX = pt.clientX;
     this.state.dragStartY = pt.clientY;
   }
@@ -703,13 +706,13 @@ export class App {
 
     if (dx > 5 || dy > 5) this.state.touchMoved = true;
 
-    // ★ 图片拖动：根据屏幕偏移量更新 offsetX/offsetY
+    // ★ 图片拖动：增量式偏移，基于拖动开始时的offset + 屏幕偏移
     if (this.state.isDragging && !this.state.draggingText) {
       const canvas = this.els.previewCanvas;
       const deltaX = (pos.x - this.state.dragStartX) / canvas.width * 100;
       const deltaY = (pos.y - this.state.dragStartY) / canvas.height * 100;
-      this.state.offsetX = Math.max(-100, Math.min(100, deltaX));
-      this.state.offsetY = Math.max(-100, Math.min(100, deltaY));
+      this.state.offsetX = Math.max(-100, Math.min(100, (this.state.dragStartOffsetX || 0) + deltaX));
+      this.state.offsetY = Math.max(-100, Math.min(100, (this.state.dragStartOffsetY || 0) + deltaY));
       this.scheduleRender();
     }
   }
@@ -741,6 +744,8 @@ export class App {
     this.state.clickCandidateTextId = null;
     this.state.draggingText = null;
     this.state.dragTextStartPos = null;
+    this.state.dragStartOffsetX = null;
+    this.state.dragStartOffsetY = null;
     this.state.dragCachedRect = null;
     if (this.state.isDragging) {
       this.state.isDragging = false;
