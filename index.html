@@ -117,6 +117,32 @@
 
     <!-- 全屏遮罩 -->
     <div class="fs-overlay" id="fsOverlay" style="display:none"></div>
+
+    <!-- 文字输入弹窗 -->
+    <div class="text-input-overlay" id="textInputOverlay" style="display:none">
+      <div class="text-input-bg"></div>
+      <div class="text-input-container">
+        <div class="text-input-preview-area">
+          <div class="text-input-preview-box">
+            <span class="text-input-preview-text" id="textInputPreview">文字</span>
+          </div>
+        </div>
+        <div class="text-input-bottom">
+          <div class="text-input-colors" id="textInputColors"></div>
+          <div class="text-input-row">
+            <button class="text-input-btn cancel" id="textInputCancel">✕</button>
+            <input class="text-input-field" id="textInputField" type="text" maxlength="50" placeholder="输入文字" autocomplete="off" />
+            <button class="text-input-btn confirm" id="textInputConfirm">✓</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 图层菜单 -->
+    <div class="layer-menu" id="layerMenu" style="display:none">
+      <button class="layer-menu-item" data-action="up">↑ 上移一层</button>
+      <button class="layer-menu-item" data-action="down">↓ 下移一层</button>
+    </div>
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>

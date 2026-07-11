@@ -3,7 +3,7 @@ import { renderImage, loadImage } from '../utils/imageProcessor.js';
 import { downloadImage, getOutputFilename } from '../utils/download.js';
 import { ColorPicker } from './ColorPicker.js';
 import { renderFrame, loadFrameImage, getFrameKey, getFrameDisplaySize, FRAME_CONFIG } from '../utils/frameProcessor.js';
-import { renderTexts, createDefaultText, genTextId } from '../utils/textProcessor.js';
+import { renderTexts, createDefaultText, genTextId, hitTestText, getCornerScreenPos } from '../utils/textProcessor.js';
 
 const PINCH_SENSITIVITY = 0.45;
 
@@ -24,8 +24,15 @@ export class App {
       frameEnabled: false, frameImages: {}, currentFrameKey: null, puzzleCanvas: null,
       texts: [], editText: null, draggingText: null,
       selectedTextId: null, clickCandidateTextId: null,
-      // 双指缩放文字：记录pinch开始时选中的文字
       pinchTextId: null, pinchTextStartSize: 36,
+      // 角控件拖动（旋转+缩放）
+      cornerDrag: null, // { textId, startAngle, startRotation, startDist, startFontSize }
+      // 文字输入弹窗
+      isTextInputOpen: false,
+      editingTextId: null,
+      textJustCreated: false,
+      // 图层菜单
+      layerMenuTarget: null,
     };
     this.renderTimer = null;
     this.cacheDOM();
@@ -49,6 +56,8 @@ export class App {
     this.els.toolBar = $('toolBar');
     this.els.toolBtns = this.els.toolBar.querySelectorAll('.tool-btn');
     this.els.toolContentInner = $('toolContentInner');
+    this.els.textInputOverlay = $('textInputOverlay');
+    this.els.layerMenu = $('layerMenu');
   }
 
   init() {
@@ -78,8 +87,16 @@ export class App {
       this.refreshDisplay();
     });
 
+    // 工具栏按钮
     this.els.toolBtns.forEach(btn => {
-      btn.addEventListener('click', () => this.switchTool(btn.dataset.tool));
+      btn.addEventListener('click', () => {
+        if (btn.dataset.tool === 'text') {
+          this.switchTool('text');
+          if (this.state.image) this.createNewText();
+        } else {
+          this.switchTool(btn.dataset.tool);
+        }
+      });
     });
 
     this.els.canvasWrapper.addEventListener('mousedown', (e) => this.startDrag(e));
@@ -88,6 +105,16 @@ export class App {
     document.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
     document.addEventListener('mouseup', () => this.endDrag());
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+
+    // 图层菜单
+    this.els.layerMenu.addEventListener('click', (e) => {
+      const item = e.target.closest('.layer-menu-item');
+      if (!item) return;
+      const action = item.dataset.action;
+      const textId = this.state.layerMenuTarget;
+      if (textId) this.moveLayer(textId, action === 'up' ? 1 : -1);
+      this.closeLayerMenu();
+    });
 
     this.renderToolContent('size');
   }
@@ -192,7 +219,6 @@ export class App {
 
   setActiveColor(color) {
     this.state.fillColor = color;
-    // sync all color btn instances (both fill panel and text panel)
     document.querySelectorAll('.color-btn:not(.custom)').forEach(b => {
       const match = b.dataset.color && b.dataset.color.toLowerCase() === color.toLowerCase();
       b.classList.toggle('active', match);
@@ -200,88 +226,74 @@ export class App {
     this.scheduleRender();
   }
 
-  // ===================== 文字工具 =====================
+  // ===================== 文字工具面板 =====================
   renderTextPanel(container) {
-    const edit = this.state.editText || createDefaultText();
-    this.state.editText = edit;
+    if (this.state.texts.length === 0) {
+      container.innerHTML = `<div class="text-panel-empty">点击下方「添加文字」<br/>在图片上创建文字</div>`;
+      return;
+    }
+
+    const selected = this.state.texts.find(t => t.id === this.state.selectedTextId);
+    const edit = selected || this.state.texts[this.state.texts.length - 1];
 
     container.innerHTML = `
-      <div class="text-editor">
-        <input class="text-input" id="textContent" type="text" value="${edit.content.replace(/"/g,'&quot;')}" placeholder="输入文字内容" maxlength="50" />
-        <div class="text-hint" id="textHint">双指缩放调大小 · 拖拽移动位置</div>
+      <div class="text-panel">
         <div class="text-color-row">
           <span class="text-slider-label">颜色</span>
           <div class="text-color-group">
-            <button class="color-btn${edit.color==='#FFFFFF'?' active':''}" data-tc="#FFFFFF" style="background:#fff" title="白色"></button>
-            <button class="color-btn${edit.color==='#FF0000'?' active':''}" data-tc="#FF0000" style="background:#f00" title="红色"></button>
-            <button class="color-btn${edit.color==='#FFEB3B'?' active':''}" data-tc="#FFEB3B" style="background:#ffeb3b" title="黄色"></button>
-            <button class="color-btn${edit.color==='#00BCD4'?' active':''}" data-tc="#00BCD4" style="background:#00bcd4" title="青色"></button>
-            <button class="color-btn${edit.color==='#000000'?' active':''}" data-tc="#000000" style="background:#000" title="黑色"></button>
-            <button class="color-btn custom" id="textCustomColor">+</button>
+            ${['#FFFFFF','#FF0000','#FFEB3B','#00BCD4','#000000'].map(c =>
+              `<button class="color-btn${edit.color===c?' active':''}" data-tc="${c}" style="background:${c}" title="${c}"></button>`
+            ).join('')}
+            <button class="color-btn custom" id="panelCustomColor">+</button>
           </div>
         </div>
-        <div class="text-actions">
-          <button class="text-btn-primary" id="textAddBtn">${this.state.texts.find(t => t.id === edit.id) ? '更新文字' : '添加文字'}</button>
-          <button class="text-btn-danger" id="textDelBtn" style="${this.state.texts.length ? '' : 'display:none'}">删除</button>
+        <div class="text-panel-actions">
+          <button class="text-action-btn" id="layerUpBtn" title="上移一层">↑ 上移</button>
+          <button class="text-action-btn" id="layerDownBtn" title="下移一层">↓ 下移</button>
+          <button class="text-action-btn danger" id="panelDelBtn" title="删除">✕ 删除</button>
         </div>
-        <div class="text-list" id="textList">${this.state.texts.map(t => '<div class="text-list-item' + (edit && edit.id === t.id ? ' active' : '') + '" data-tid="' + t.id + '"><span class="text-list-preview">' + t.content + '</span><button class="text-list-del" data-tid="' + t.id + '">✕</button></div>').join('')}</div>
+        <div class="text-list" id="textList">
+          ${this.state.texts.map(t =>
+            `<div class="text-list-item${edit.id===t.id?' active':''}" data-tid="${t.id}">
+              <span class="text-list-preview">${t.content || '空'}</span>
+            </div>`
+          ).join('')}
+        </div>
       </div>
     `;
 
-    container.querySelector('#textContent').addEventListener('input', (e) => {
-      edit.content = e.target.value; this.state.editText = edit;
-    });
-    // 输入框聚焦/失焦：显示/隐藏操作提示
-    container.querySelector('#textContent').addEventListener('focus', () => {
-      const hint = container.querySelector('#textHint');
-      if (hint) hint.classList.add('show');
-    });
-    container.querySelector('#textContent').addEventListener('blur', () => {
-      const hint = container.querySelector('#textHint');
-      if (hint) hint.classList.remove('show');
-    });
     container.querySelector('.text-color-group').addEventListener('click', (e) => {
       const btn = e.target.closest('.color-btn'); if (!btn) return;
-      if (btn.id === 'textCustomColor') {
+      if (btn.id === 'panelCustomColor') {
         new ColorPicker({ initialColor: edit.color, onConfirm: (c) => {
-          // 立即更新当前选中文字的颜色
-          if (edit.id) {
-            const target = this.state.texts.find(t => t.id === edit.id);
-            if (target) target.color = c;
-          }
-          edit.color = c; this.state.editText = edit;
+          edit.color = c; this.state.editText = { ...edit };
           this.syncColorBtns(c); this.refreshDisplay();
         }});
         return;
       }
       const c = btn.dataset.tc;
-      // 立即更新当前选中文字的颜色
-      if (edit.id) {
-        const target = this.state.texts.find(t => t.id === edit.id);
-        if (target) target.color = c;
-      }
-      edit.color = c; this.state.editText = edit;
+      edit.color = c; this.state.editText = { ...edit };
       this.syncColorBtns(c);
       this.refreshDisplay();
     });
-    container.querySelector('#textAddBtn').addEventListener('click', () => {
-      if (!edit.content.trim()) return;
-      const existing = this.state.texts.find(t => t.id === edit.id);
-      if (existing) {
-        // 编辑文字：仅更新内容，位置/大小/颜色保持不变
-        existing.content = edit.content;
-      } else {
-        this.state.texts.push({ id: genTextId(), content: edit.content, fontSize: 36, color: edit.color, x: 0.5, y: 0.5 });
-      }
-      this.state.editText = null; this.state.selectedTextId = null; this.renderTextPanel(container); this.refreshDisplay();
+
+    container.querySelector('#layerUpBtn').addEventListener('click', () => {
+      this.moveLayer(edit.id, 1);
     });
-    container.querySelector('#textDelBtn').addEventListener('click', () => {
-      this.state.texts = this.state.texts.filter(t => t.id !== edit.id); this.state.editText = null; this.state.selectedTextId = null; this.renderTextPanel(container); this.refreshDisplay();
+    container.querySelector('#layerDownBtn').addEventListener('click', () => {
+      this.moveLayer(edit.id, -1);
+    });
+    container.querySelector('#panelDelBtn').addEventListener('click', () => {
+      this.state.texts = this.state.texts.filter(t => t.id !== edit.id);
+      this.state.selectedTextId = this.state.texts.length > 0 ? this.state.texts[this.state.texts.length - 1].id : null;
+      this.renderTextPanel(container); this.refreshDisplay();
     });
     container.querySelector('#textList').addEventListener('click', (e) => {
-      const item = e.target.closest('.text-list-item'); const delBtn = e.target.closest('.text-list-del');
-      if (delBtn) { this.state.texts = this.state.texts.filter(t => t.id !== delBtn.dataset.tid); this.state.editText = null; this.renderTextPanel(container); this.refreshDisplay(); return; }
-      if (item) { const t = this.state.texts.find(tx => tx.id === item.dataset.tid); if (t) { this.state.editText = { ...t }; this.state.selectedTextId = t.id; this.renderTextPanel(container); this.refreshDisplay(); } }
+      const item = e.target.closest('.text-list-item');
+      if (item) {
+        const t = this.state.texts.find(tx => tx.id === item.dataset.tid);
+        if (t) { this.state.selectedTextId = t.id; this.renderTextPanel(container); this.refreshDisplay(); }
+      }
     });
   }
 
@@ -291,45 +303,281 @@ export class App {
     });
   }
 
-  getTextAtPos(cx, cy, canvas) {
-    const ctx = canvas.getContext('2d');
-    const fontFamily = '"PingFang SC", "Microsoft YaHei", sans-serif';
-    const pcw = canvas.width;
-    for (let i = this.state.texts.length - 1; i >= 0; i--) {
-      const t = this.state.texts[i];
-      const tx = t.x * pcw; const ty = t.y * canvas.height;
-      const fs = t.fontSize * (pcw / 400);
-      ctx.font = `${Math.round(fs)}px ${fontFamily}`;
-      const metrics = ctx.measureText(t.content || '');
-      const tw = metrics.width;
-      const th = fs;
-      const pad = 12;
-      // 精确命中：基于实际文字渲染尺寸
-      if (Math.abs(cx - tx) < tw / 2 + pad && Math.abs(cy - ty) < th / 2 + pad) {
-        return { text: t, index: i };
+  syncInputColors(color) {
+    document.querySelectorAll('.input-color-btn').forEach(b => {
+      const match = b.dataset.tc && b.dataset.tc.toLowerCase() === color.toLowerCase();
+      b.classList.toggle('active', match);
+    });
+  }
+
+  // ===================== 文字创建 & 输入弹窗 =====================
+  createNewText() {
+    const text = createDefaultText();
+    text.zIndex = this.state.texts.length; // 新文字在最上层
+    this.state.texts.push(text);
+    this.state.selectedTextId = text.id;
+    this.state.textJustCreated = true;
+    this.refreshDisplay();
+    this.renderTextPanel(this.els.toolContentInner);
+    // 打开输入弹窗
+    this.openTextInput(text);
+  }
+
+  openTextInput(text) {
+    if (this.state.isTextInputOpen) return;
+    this.state.isTextInputOpen = true;
+    this.state.editingTextId = text.id;
+
+    // 保存原始内容用于取消恢复
+    this._textInputOriginal = text.content;
+
+    const overlay = this.els.textInputOverlay;
+    const preview = overlay.querySelector('#textInputPreview');
+    const field = overlay.querySelector('#textInputField');
+    const cancelBtn = overlay.querySelector('#textInputCancel');
+    const confirmBtn = overlay.querySelector('#textInputConfirm');
+    const colorsContainer = overlay.querySelector('#textInputColors');
+
+    // 更新预览
+    preview.textContent = text.content || ' ';
+    field.value = text.content === '点击输入文字' ? '' : text.content;
+
+    // 渲染颜色按钮
+    colorsContainer.innerHTML = `
+      ${['#FFFFFF','#FF0000','#FFEB3B','#00BCD4','#000000'].map(c =>
+        `<button class="input-color-btn color-btn${text.color===c?' active':''}" data-tc="${c}" style="background:${c}"></button>`
+      ).join('')}
+      <button class="input-color-btn color-btn custom" id="inputCustomColor">+</button>
+    `;
+
+    // 颜色点击
+    colorsContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.color-btn'); if (!btn) return;
+      if (btn.id === 'inputCustomColor') {
+        new ColorPicker({ initialColor: text.color, onConfirm: (c) => {
+          text.color = c;
+          this.syncInputColors(c);
+          preview.style.color = c;
+          this.refreshDisplay();
+        }});
+        return;
       }
+      const c = btn.dataset.tc;
+      text.color = c;
+      this.syncInputColors(c);
+      preview.style.color = c;
+      this.refreshDisplay();
+    });
+
+    // 输入同步
+    const onInput = () => {
+      text.content = field.value || ' ';
+      preview.textContent = text.content;
+      this.refreshDisplay();
+    };
+    field.addEventListener('input', onInput);
+
+    // × 取消
+    cancelBtn.onclick = () => this.closeTextInput(false);
+    // ✓ 确认
+    confirmBtn.onclick = () => this.closeTextInput(true);
+
+    // 关闭图层菜单
+    this.closeLayerMenu();
+
+    // 显示弹窗
+    overlay.style.display = 'flex';
+    this.els.editorArea.classList.add('blurred');
+
+    // 自动聚焦输入框
+    setTimeout(() => field.focus(), 100);
+  }
+
+  closeTextInput(save) {
+    if (!this.state.isTextInputOpen) return;
+    this.state.isTextInputOpen = false;
+    const overlay = this.els.textInputOverlay;
+    overlay.style.display = 'none';
+    this.els.editorArea.classList.remove('blurred');
+
+    const text = this.state.texts.find(t => t.id === this.state.editingTextId);
+    if (!text) { this.state.editingTextId = null; return; }
+
+    if (save) {
+      // 确认：保持文字
+      text.content = text.content.trim() || '文字';
+      this.state.editingTextId = null;
+      this.state.textJustCreated = false;
+      this.refreshDisplay();
+      this.renderTextPanel(this.els.toolContentInner);
+    } else {
+      // 取消：如果是新建的文字则删除，否则恢复原内容
+      if (this.state.textJustCreated) {
+        this.state.texts = this.state.texts.filter(t => t.id !== text.id);
+        this.state.selectedTextId = this.state.texts.length > 0 ? this.state.texts[this.state.texts.length - 1].id : null;
+      } else {
+        text.content = this._textInputOriginal;
+      }
+      this.state.editingTextId = null;
+      this.state.textJustCreated = false;
+      this._textInputOriginal = null;
+      this.refreshDisplay();
+      this.renderTextPanel(this.els.toolContentInner);
     }
-    return null;
+  }
+
+  // ===================== 图层管理 =====================
+  moveLayer(textId, direction) {
+    const idx = this.state.texts.findIndex(t => t.id === textId);
+    if (idx < 0) return;
+    const target = idx + direction;
+    if (target < 0 || target >= this.state.texts.length) return;
+    // 交换zIndex
+    const tmp = this.state.texts[idx].zIndex;
+    this.state.texts[idx].zIndex = this.state.texts[target].zIndex;
+    this.state.texts[target].zIndex = tmp;
+    // 交换数组位置
+    [this.state.texts[idx], this.state.texts[target]] = [this.state.texts[target], this.state.texts[idx]];
+    this.renderTextPanel(this.els.toolContentInner);
+    this.refreshDisplay();
+  }
+
+  // ===================== 图层菜单 =====================
+  showLayerMenu(textId, screenX, screenY) {
+    this.closeLayerMenu();
+    this.state.layerMenuTarget = textId;
+    const menu = this.els.layerMenu;
+    menu.style.display = 'block';
+    // 定位在点击位置
+    menu.style.left = Math.min(screenX, window.innerWidth - 160) + 'px';
+    menu.style.top = Math.min(screenY, window.innerHeight - 100) + 'px';
+    // 延迟关闭
+    setTimeout(() => {
+      document.addEventListener('click', this._closeLayerHandler = () => this.closeLayerMenu());
+    }, 10);
+  }
+
+  closeLayerMenu() {
+    this.state.layerMenuTarget = null;
+    if (this.els.layerMenu) this.els.layerMenu.style.display = 'none';
+    if (this._closeLayerHandler) {
+      document.removeEventListener('click', this._closeLayerHandler);
+      this._closeLayerHandler = null;
+    }
+  }
+
+  // ===================== 文字事件处理（角控件 + 正文） =====================
+  handleTextCornerHit(hit, pt, canvas) {
+    const t = hit.text;
+    const canvasRect = this.els.canvasWrapper.getBoundingClientRect();
+    const canvasW = canvas.width;
+    const canvasH = canvas.height;
+
+    switch (hit.area) {
+      case 'tr': // ✕ 删除
+        this.state.texts = this.state.texts.filter(tx => tx.id !== t.id);
+        this.state.selectedTextId = this.state.texts.length > 0 ? this.state.texts[this.state.texts.length - 1].id : null;
+        this.refreshDisplay();
+        this.renderTextPanel(this.els.toolContentInner);
+        return true;
+
+      case 'bl': // +1 复制
+        const copy = JSON.parse(JSON.stringify(t));
+        copy.id = genTextId();
+        copy.x = Math.min(t.x + 0.04, 0.9);
+        copy.y = Math.min(t.y + 0.04, 0.9);
+        copy.zIndex = this.state.texts.length;
+        this.state.texts.push(copy);
+        this.state.selectedTextId = copy.id;
+        this.refreshDisplay();
+        this.renderTextPanel(this.els.toolContentInner);
+        this.showToast('已复制');
+        return true;
+
+      case 'tl': // ⋮ 图层菜单
+        // 计算菜单的屏幕坐标
+        const cs = getCornerScreenPos(t, canvasW, canvasH);
+        const sx = canvasRect.left + (cs.tl.x / canvasW) * canvasRect.width;
+        const sy = canvasRect.top + (cs.tl.y / canvasH) * canvasRect.height;
+        this.showLayerMenu(t.id, sx, sy + 20);
+        return true;
+
+      case 'br': // ↻ 旋转缩放
+        // 开始旋转拖动
+        const local = this.toTextLocal(pt.clientX, pt.clientY, t, canvas);
+        const startAngle = Math.atan2(local.y, local.x);
+        const startDist = Math.sqrt(local.x * local.x + local.y * local.y);
+        this.state.cornerDrag = {
+          textId: t.id,
+          startAngle: startAngle,
+          startRotation: t.rotation || 0,
+          startDist: startDist,
+          startFontSize: t.fontSize,
+        };
+        this.state.draggingText = null;
+        this.state.isDragging = false;
+        return true;
+
+      case 'body': // 文字主体 → 打开输入弹窗
+        if (!this.state.isTextInputOpen) {
+          this.state.selectedTextId = t.id;
+          this.state.textJustCreated = false;
+          this.refreshDisplay();
+          // 切到文字工具
+          if (this.activeTool !== 'text') this.switchTool('text');
+          else this.renderTextPanel(this.els.toolContentInner);
+          this.openTextInput(t);
+        }
+        return true;
+    }
+    return false;
+  }
+
+  /** 将屏幕坐标转到文字局部坐标（用于旋转手柄） */
+  toTextLocal(clientX, clientY, t, canvas) {
+    const r = this.els.canvasWrapper.getBoundingClientRect();
+    const px = ((clientX - r.left) / r.width) * canvas.width;
+    const py = ((clientY - r.top) / r.height) * canvas.height;
+    const cx = t.x * canvas.width;
+    const cy = t.y * canvas.height;
+    let dx = px - cx;
+    let dy = py - cy;
+    if (t.rotation) {
+      const rad = -(t.rotation * Math.PI) / 180;
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+    }
+    return { x: dx, y: dy };
   }
 
   // ===================== 触摸/拖拽 =====================
   startDrag(e) {
     if (!this.state.image) return;
+    if (this.state.isTextInputOpen) return;
+
     const pt = e.touches ? e.touches[0] : e;
     const r = this.els.canvasWrapper.getBoundingClientRect();
-    const cx = (pt.clientX - r.left) / r.width;
-    const cy = (pt.clientY - r.top) / r.height;
-
-    // 检查是否点击到文字
+    const px = ((pt.clientX - r.left) / r.width) * this.els.previewCanvas.width;
+    const py = ((pt.clientY - r.top) / r.height) * this.els.previewCanvas.height;
     const canvas = this.els.previewCanvas;
-    const hit = this.getTextAtPos(cx * canvas.width, cy * canvas.height, canvas);
+    const ctx = canvas.getContext('2d');
+
+    // 检测文字命中（含角控件）
+    const hit = hitTestText(ctx, this.state.texts, canvas.width, canvas.height, px, py, this.state.selectedTextId);
     if (hit) {
-      // 记录点击候选文本（等待判断是点击还是拖动）
-      this.state.clickCandidateTextId = hit.text.id;
-      this.state.dragStartX = pt.clientX;
-      this.state.dragStartY = pt.clientY;
-      this.state.touchMoved = false;
-      return;
+      // 尝试处理角控件事件
+      if (hit.area !== 'body') {
+        const handled = this.handleTextCornerHit(hit, pt, canvas);
+        if (handled) return;
+      }
+      // 文字主体：记录拖动候选
+      if (hit.area === 'body') {
+        this.state.clickCandidateTextId = hit.text.id;
+        this.state.dragStartX = pt.clientX;
+        this.state.dragStartY = pt.clientY;
+        this.state.touchMoved = false;
+        return;
+      }
     }
 
     // 点击空白区域：取消文字选中
@@ -337,7 +585,6 @@ export class App {
       this.state.selectedTextId = null;
       this.state.editText = null;
       this.refreshDisplay();
-      // 如果当前在文字面板，重新渲染面板
       if (this.activeTool === 'text') this.renderTextPanel(this.els.toolContentInner);
     }
 
@@ -354,13 +601,41 @@ export class App {
     const dx = Math.abs(pos.x - this.state.dragStartX);
     const dy = Math.abs(pos.y - this.state.dragStartY);
 
+    // 角控件旋转拖动
+    if (this.state.cornerDrag) {
+      const cd = this.state.cornerDrag;
+      const text = this.state.texts.find(t => t.id === cd.textId);
+      if (text) {
+        const r = this.els.canvasWrapper.getBoundingClientRect();
+        const canvas = this.els.previewCanvas;
+        const px = ((pos.x - r.left) / r.width) * canvas.width;
+        const py = ((pos.y - r.top) / r.height) * canvas.height;
+        const cx = text.x * canvas.width;
+        const cy = text.y * canvas.height;
+        const currentAngle = Math.atan2(py - cy, px - cx);
+        const currentDist = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+
+        // 旋转
+        text.rotation = cd.startRotation + ((currentAngle - cd.startAngle) * 180 / Math.PI);
+        // 缩放
+        if (currentDist > 5 && cd.startDist > 5) {
+          const scale = currentDist / cd.startDist;
+          text.fontSize = Math.max(12, Math.min(200, Math.round(cd.startFontSize * scale)));
+        }
+        this.refreshDisplay();
+      }
+      return;
+    }
+
     // 文字点击候选 → 超过阈值转为拖动
     if (this.state.clickCandidateTextId && (dx > 5 || dy > 5)) {
       const text = this.state.texts.find(t => t.id === this.state.clickCandidateTextId);
       if (text) {
+        this.state.selectedTextId = text.id;
         this.state.draggingText = text;
         this.state.clickCandidateTextId = null;
         this.state.touchMoved = true;
+        // 打开输入弹窗（如果是点击文字触发拖动，不予打开）
       }
     }
 
@@ -368,8 +643,8 @@ export class App {
       const r = this.els.canvasWrapper.getBoundingClientRect();
       this.state.draggingText.x = (pos.x - r.left) / r.width;
       this.state.draggingText.y = (pos.y - r.top) / r.height;
-      this.state.draggingText.x = Math.max(0.05, Math.min(0.95, this.state.draggingText.x));
-      this.state.draggingText.y = Math.max(0.05, Math.min(0.95, this.state.draggingText.y));
+      this.state.draggingText.x = Math.max(0.02, Math.min(0.98, this.state.draggingText.x));
+      this.state.draggingText.y = Math.max(0.02, Math.min(0.98, this.state.draggingText.y));
       this.refreshDisplay();
       return;
     }
@@ -378,7 +653,13 @@ export class App {
   }
 
   endDrag() {
-    // 点击文字候选（未拖动）：选中文字，切到文字工具
+    // 角控件拖动结束
+    if (this.state.cornerDrag) {
+      this.state.cornerDrag = null;
+      return;
+    }
+
+    // 点击文字候选（未拖动）：选中 + 打开输入弹窗
     if (this.state.clickCandidateTextId && !this.state.touchMoved) {
       const text = this.state.texts.find(t => t.id === this.state.clickCandidateTextId);
       if (text) {
@@ -386,10 +667,12 @@ export class App {
         this.state.editText = { ...text };
         this.state.clickCandidateTextId = null;
         this.state.draggingText = null;
-        // 切换到文字工具并刷新显示
+        this.state.textJustCreated = false;
         if (this.activeTool !== 'text') this.switchTool('text');
         else this.renderTextPanel(this.els.toolContentInner);
         this.refreshDisplay();
+        // 打开输入弹窗
+        this.openTextInput(text);
       }
     }
 
@@ -407,24 +690,24 @@ export class App {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
-  /** 找到第一个手指位置对应的文字 */
   findTextUnderFinger(pt) {
     const r = this.els.canvasWrapper.getBoundingClientRect();
     const cw = this.els.previewCanvas.width;
     const ch = this.els.previewCanvas.height;
-    const cx = ((pt.clientX - r.left) / r.width) * cw;
-    const cy = ((pt.clientY - r.top) / r.height) * ch;
-    const hit = this.getTextAtPos(cx, cy, this.els.previewCanvas);
-    return hit;
+    const px = ((pt.clientX - r.left) / r.width) * cw;
+    const py = ((pt.clientY - r.top) / r.height) * ch;
+    const ctx = this.els.previewCanvas.getContext('2d');
+    const hit = hitTestText(ctx, this.state.texts, cw, ch, px, py, this.state.selectedTextId);
+    return hit ? { text: hit.text, area: hit.area } : null;
   }
 
   handleTouchStart(e) {
     if (e.touches.length >= 2) {
       e.preventDefault();
-      this.state.clickCandidateTextId = null; // 取消文字点击候选
-      // 检测手指下方是否有文字（用第一个手指位置）
+      if (this.state.isTextInputOpen) return;
+      this.state.clickCandidateTextId = null;
       const hit = this.findTextUnderFinger(e.touches[0]);
-      if (hit) {
+      if (hit && hit.area === 'body') {
         this.state.pinchTextId = hit.text.id;
         this.state.pinchTextStartSize = hit.text.fontSize;
         this.state.selectedTextId = hit.text.id;
@@ -452,7 +735,6 @@ export class App {
       const dist = this.getTouchDistance(e);
 
       if (this.state.pinchTextId) {
-        // 双指在文字上：缩放字体大小
         const text = this.state.texts.find(t => t.id === this.state.pinchTextId);
         if (text) {
           const ratio = dist / this.state.pinchStartDist;
@@ -462,7 +744,6 @@ export class App {
           this.refreshDisplay();
         }
       } else {
-        // 双指在其他区域：缩放图片
         const nz = Math.round(this.state.pinchStartZoom * (1 + ((dist - this.state.pinchStartDist) * PINCH_SENSITIVITY) / this.state.pinchStartDist));
         const clamped = Math.max(ZOOM_RANGE.min, Math.min(ZOOM_RANGE.max, nz));
         this.state.zoom = clamped;
@@ -530,6 +811,7 @@ export class App {
     this.els.uploadArea.style.display = 'flex';
     this.els.editorArea.style.display = 'none';
     this.els.fileInput.value = '';
+    this.closeTextInput(false);
   }
 
   resetImage() {
@@ -618,8 +900,10 @@ export class App {
     } else {
       this.drawBaseOnly(canvas, ctx, pc, pvw, pvh);
     }
-    // 文字在相框之上（传入选中ID以显示选中边框）
-    renderTexts(ctx, this.state.texts, canvas.width, canvas.height, this.state.selectedTextId);
+    // 文字在相框之上（输入模式隐藏角控件）
+    renderTexts(ctx, this.state.texts, canvas.width, canvas.height, this.state.selectedTextId, {
+      hideControls: this.state.isTextInputOpen,
+    });
   }
 
   drawBaseOnly(canvas, ctx, pc, pvw, pvh) {
@@ -663,9 +947,9 @@ export class App {
         zoom: this.state.zoom, offsetX: 0, offsetY: 0,
         rotation: this.state.rotation, fillColor: this.state.fillColor,
       });
-      // 叠加用户文字到下载图
+      // 叠加用户文字到下载图（不显示控制框）
       if (this.state.texts.length > 0) {
-        renderTexts(ctx, this.state.texts, pxW, pxH);
+        renderTexts(ctx, this.state.texts, pxW, pxH, null, { hideControls: true });
       }
       const filename = getOutputFilename(size.name, mode);
       await new Promise(r => setTimeout(r, 50));
