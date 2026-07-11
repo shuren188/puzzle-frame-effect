@@ -5,7 +5,7 @@
 > **一款轻量级在线拼图DIY编辑工具** — 上传照片，自由拼图裁剪、叠加透明相框、添加艺术文字，一键下载高清效果图。纯浏览器端运行，无需安装任何软件。
 
 [![在线体验](https://img.shields.io/badge/🌐_在线体验-点击前往-5ce5e5?style=for-the-badge)](https://shuren188.github.io/puzzle-frame-effect/)
-[![版本](https://img.shields.io/badge/最新版本-v4.10.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
+[![版本](https://img.shields.io/badge/最新版本-v4.11.0-5ce5e5)](https://github.com/shuren188/puzzle-frame-effect/releases)
 [![许可](https://img.shields.io/badge/开源许可-MIT-b794f4)](LICENSE)
 ![构建状态](https://img.shields.io/badge/构建-通过-success)
 ![生产依赖](https://img.shields.io/badge/生产依赖-零依赖-5ce5e5)
@@ -335,6 +335,10 @@ npm run deploy
        │      renderTexts()
        │      (Meitu框体/角控件/命中检测)
        │
+       ├─── safeAreaProcessor.js ── 相框安全区域（纯显示模块）
+       │      renderSafeArea()
+       │      (8mm物理尺寸→像素换算/虚线蒙版)
+       │
        ├─── download.js ────────── 下载导出
        │      PC直接下载 / 移动端长按保存
        │
@@ -452,6 +456,7 @@ puzzle-frame-effect/
 │   │   │   └── renderFrame()        → Bitmap Scale → 绘拼图 → 绘相框
 │   │   │
 │   │   ├── textProcessor.js         # 文字渲染模块 (~300行)
+│   │   ├── safeAreaProcessor.js      # 相框安全区域 (8mm换算+虚线蒙版)
 │   │   │   ├── createDefaultText()  → 默认文字对象
 │   │   │   ├── renderTexts()        → Meitu框体+角控件绘制
 │   │   │   ├── hitTestText()        → 精确命中检测（含旋转）
@@ -582,6 +587,16 @@ npm run build && npm run deploy
 ## 📋 版本发布记录
 
 > 每次版本更新都会在此记录。版本号格式：`v主版本.次版本.修订号`
+
+### v4.11.0 — 新增智能适配 + 相框安全区域
+> 2026-07-11
+
+- **新增【一键智能适配】**：上传图片后自动执行 object-fit:cover 算法，图片完整覆盖拼图区域不留白边
+- **新增** 调整面板「✨智能适配」按钮，编辑过程中随时恢复到最佳适配状态
+- **新增【相框安全显示区域】**：相框开启时显示 8mm 安全边界辅助层（半透明灰蒙版 + 青色虚线）
+- **新增** 安全区域提示文字：引导用户将重要内容放置在虚线以内
+- **新增** `safeAreaProcessor.js` — 纯显示模块，不影响下载导出
+- **不变** 所有已有功能零影响
 
 ### v4.10.0 — 详尽版项目介绍/安装步骤/使用说明
 > 2026-07-11
